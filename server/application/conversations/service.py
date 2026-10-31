@@ -429,11 +429,18 @@ class ConversationService:
             emit("error", {"code": turn.error_code, "message": str(error)[:200]})
             return TurnExecution(turn=turn, events=events)
 
-        try:
-            payload = json.loads(_extract_json(response.text))
-        except ValueError:
-            payload = {}
-        answer = str(payload.get("answer") or response.text).strip()[: self._budget.max_output_tokens_per_turn * 4]
+        payload = _parse_model_json(response.text)
+        if payload and payload.get("answer"):
+            answer = str(payload["answer"]).strip()[: self._budget.max_output_tokens_per_turn * 4]
+        else:
+            # The reply did not follow the agreed JSON shape (usually because it
+            # was truncated). Showing the raw text would expose an unstructured
+            # model blob and imply a proven answer, so it is replaced by an
+            # explicit, honest statement of what happened.
+            answer = (
+                "本轮回答没有按约定的结构完整生成，因此不展示这部分内容。"
+                "可以换一种问法，或让创作者补充资料后再试。"
+            )
         cited_ids = [str(value) for value in payload.get("citation_span_ids") or [] if str(value) in allowed]
         claim_by_span = {
             span_id: claim["id"]
@@ -442,9 +449,12 @@ class ConversationService:
         }
         citations = self._citations_for(cited_ids, spans, source_labels, claim_by_span)
         actions = self._actions_for(payload.get("suggested_actions") or [], version)
-        answerability = _answerability(payload.get("answerability"), citations)
+        answerability = (
+            _answerability(payload.get("answerability"), citations) if payload else Answerability.PARTIAL
+        )
 
-        turn.provider_call_ref = getattr(response, "provider_request_id", None)
+        request_id = getattr(response, "provider_request_id", None)
+        turn.provider_call_ref = str(request_id)[:128] if request_id else None
         turn.cost_status = getattr(response, "cost_status", CostStatus.UNKNOWN).value
         turn.cost_micros = getattr(response, "cost_micros", None)
         return await self._finish(turn, events, emit, answer=answer, citations=citations, actions=actions, answerability=answerability)
@@ -663,17 +673,61 @@ class ConversationService:
         return tuple(actions)
 
 
-def _extract_json(text: str) -> str:
+def _parse_model_json(text: str) -> dict[str, Any]:
+    """Parse a model reply that should be a JSON object.
+
+    Returns ``{}`` when the text is not JSON. Callers must then treat the reply
+    as unsupported (no citations) instead of showing raw JSON as the answer.
+    """
+    candidate = text.strip()
+    if candidate.startswith("```"):
+        fenced = candidate.split("```")
+        if len(fenced) >= 2:
+            candidate = fenced[1].removeprefix("json").strip()
+    try:
+        parsed = json.loads(candidate)
+        return parsed if isinstance(parsed, dict) else {}
+    except ValueError:
+        pass
+    # Fall back to the outermost balanced object, tolerating trailing prose.
+    start = candidate.find("{")
+    if start == -1:
+        return {}
+    depth = 0
+    in_string = False
+    escaped = False
+    for index in range(start, len(candidate)):
+        char = candidate[index]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif char == "\\":
+                escaped = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                try:
+                    parsed = json.loads(candidate[start : index + 1])
+                    return parsed if isinstance(parsed, dict) else {}
+                except ValueError:
+                    return {}
+    return {}
+
+
+def _clean_answer(text: str) -> str:
+    """Strip a fenced block so a non-JSON reply is not shown with markdown fences."""
     stripped = text.strip()
     if stripped.startswith("```"):
-        start = stripped.find("{")
-        end = stripped.rfind("}")
-        if start != -1 and end > start:
-            return stripped[start : end + 1]
-    start = stripped.find("{")
-    end = stripped.rfind("}")
-    if start != -1 and end > start:
-        return stripped[start : end + 1]
+        parts = stripped.split("```")
+        if len(parts) >= 2:
+            return parts[1].removeprefix("json").strip()
     return stripped
 
 

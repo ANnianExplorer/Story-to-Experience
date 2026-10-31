@@ -38,8 +38,11 @@ from server.application.generation.spec_validation import validate_dialogue_prof
 from server.domain.agents import (
     AGENT_PROTOCOL_VERSION,
     PROFILES,
+    AgentResult,
     AgentRole,
+    AgentRunStatus,
     AgentTaskEnvelope,
+    AgentUsage,
     Plan,
     PlanTask,
     TOOL_MATRIX,
@@ -638,7 +641,16 @@ class OrchestrationService:
         for claim in payload["claims"]:
             claim["evidence_span_ids"] = [span_id for span_id in claim["evidence_span_ids"] if span_id in valid_spans]
         gaps.extend(payload["gaps"])
-        trace = self._trace_from(envelope, "succeeded", started, response, payload)
+        trace = await self._finish_task(
+            envelope,
+            started=started,
+            response=response,
+            payload=payload,
+            artifact_kind="evidence_bundle",
+            citation_refs=tuple(
+                span for claim in payload["claims"] for span in claim["evidence_span_ids"]
+            ),
+        )
         return payload, trace, calls
 
     async def _run_designer(
@@ -688,7 +700,9 @@ class OrchestrationService:
             max_tokens=4500,
             check=self._check_blueprint,
         )
-        trace = self._trace_from(envelope, "succeeded", started, response, payload)
+        trace = await self._finish_task(
+            envelope, started=started, response=response, payload=payload, artifact_kind="blueprint"
+        )
         return payload, trace, calls
 
     async def _run_builder(
@@ -746,12 +760,15 @@ class OrchestrationService:
         spec = _fill_draft(draft, payload)
         validate_experience_spec(spec)
         candidate = {"spec": spec, "dialogue": payload["dialogue"]}
-        trace = self._trace_from(
+        trace = await self._finish_task(
             envelope,
-            "succeeded",
-            started,
-            response,
-            {"scenes": len(spec["scenes"]), "tasks": sum(len(scene["tasks"]) for scene in spec["scenes"])},
+            started=started,
+            response=response,
+            payload={"spec": spec, "dialogue": payload["dialogue"]},
+            artifact_kind="candidate",
+            citation_refs=tuple(
+                span for claim in spec["claims"] for span in claim["evidence_span_ids"]
+            ),
         )
         return candidate, trace, calls
 
@@ -791,7 +808,9 @@ class OrchestrationService:
             max_tokens=4000,
             check=_reject_review_approval,
         )
-        trace = self._trace_from(envelope, "succeeded", started, response, payload)
+        trace = await self._finish_task(
+            envelope, started=started, response=response, payload=payload, artifact_kind="review_findings"
+        )
         trace.issues = list(payload["findings"])
         return payload, trace, calls
 
@@ -835,7 +854,13 @@ class OrchestrationService:
             max_tokens=3000,
         )
         patched = apply_patch(candidate["spec"], payload["patches"])
-        trace = self._trace_from(envelope, "succeeded", started, response, {"patches": len(payload["patches"])})
+        trace = await self._finish_task(
+            envelope,
+            started=started,
+            response=response,
+            payload={"patches": payload["patches"], "reason": payload["reason"]},
+            artifact_kind="patch",
+        )
         return (
             {"spec": patched, "dialogue": candidate["dialogue"]},
             trace,
@@ -866,6 +891,23 @@ class OrchestrationService:
         completion_scenes = [scene for scene in payload["scenes"] if scene["is_completion"]]
         if len(completion_scenes) != 1:
             raise ValidationFailure("BLUEPRINT_INVALID", "蓝图必须恰好有一个完成场景。")
+        if not 4 <= len(payload["scenes"]) <= 6:
+            raise ValidationFailure("BLUEPRINT_INVALID", "体验场景需 4—6 个。", {"scenes": len(payload["scenes"])})
+        for scene in payload["scenes"]:
+            if scene["is_completion"]:
+                continue
+            if not scene["claim_indexes"]:
+                raise ValidationFailure(
+                    "BLUEPRINT_SCENE_WITHOUT_CLAIM",
+                    "每个交互场景都必须绑定至少一条事实，否则任务无法追溯依据。",
+                    {"scene_id": scene["scene_id"]},
+                )
+            if not scene["objective_ids"]:
+                raise ValidationFailure(
+                    "BLUEPRINT_SCENE_WITHOUT_OBJECTIVE",
+                    "每个交互场景都必须绑定教学目标。",
+                    {"scene_id": scene["scene_id"]},
+                )
 
     def _check_candidate(self, payload: dict[str, Any]) -> None:
         """Schema-check the spec and the dialogue profile before either is used."""
@@ -958,11 +1000,32 @@ class OrchestrationService:
             dialogue_profile_hash=profile.hash(),
             runtime_version=str(spec.get("runtime_version", "1.0.0")),
         )
+        # Persist the deterministic report alongside the candidate. Without it a
+        # creator could never pass the technical gate for sharing, and the run
+        # would claim "validated" with no stored evidence (R10).
+        await uow.reviews.add_report(
+            report_id=new_id(),
+            version_id=version["id"],
+            project_id=project_id,
+            spec_hash=spec_hash,
+            source_hash=str(run.source_snapshot_id or ""),
+            runtime_hash=str(spec.get("runtime_version", "1.0.0")),
+            checker_version=str(validation_report.get("checker_version", "unknown")),
+            layer="full",
+            status=str(validation_report.get("status", "not_run")),
+            evidence_manifest={
+                "layers": validation_report.get("layers"),
+                "search": validation_report.get("search"),
+                "findings": validation_report.get("findings"),
+                "run_id": run.id,
+            },
+        )
         await uow.runs.append_event(
             run.id,
             "quality",
             {
                 "validation_status": validation_report.get("status"),
+                "checker_version": validation_report.get("checker_version"),
                 "review_findings": len(review_payload.get("findings", [])),
                 "spec_hash": spec_hash,
                 "semantic_hash": semantic_hash,
@@ -970,6 +1033,51 @@ class OrchestrationService:
             },
         )
         return version
+
+
+    async def _finish_task(
+        self,
+        envelope: AgentTaskEnvelope,
+        *,
+        started: datetime,
+        response: Any,
+        payload: dict[str, Any],
+        artifact_kind: str,
+        citation_refs: tuple[str, ...] = (),
+        issues: tuple[Any, ...] = (),
+    ) -> AgentTrace:
+        """Record the task row, its artifact and its usage in one transaction."""
+        artifact_id = new_id()
+        result = AgentResult(
+            protocol_version=AGENT_PROTOCOL_VERSION,
+            task_id=envelope.task_id,
+            agent_id=envelope.agent_id,
+            role=envelope.role,
+            status=AgentRunStatus.SUCCEEDED,
+            artifact_refs=(artifact_id,),
+            citation_refs=citation_refs,
+            issues=issues,
+            usage=AgentUsage(
+                model_calls=1,
+                input_tokens=response.usage.input_tokens,
+                output_tokens=response.usage.output_tokens,
+                cost_status=getattr(response, "cost_status", CostStatus.UNKNOWN).value,
+                cost_micros=getattr(response, "cost_micros", None),
+                currency=getattr(response, "currency", None),
+            ),
+            handoff_to=(),
+            reason_code=None,
+        )
+        async with self._uow() as uow:
+            await uow.agents.create_task(envelope)
+            await uow.agents.mark_running(envelope.task_id)
+            await uow.agents.save_result(
+                envelope.run_id,
+                result,
+                {"kind": artifact_kind, "schema_version": "1.0.0", "payload": payload},
+            )
+            await uow.commit()
+        return self._trace_from(envelope, "succeeded", started, response, payload)
 
     async def _record_calls(self, run_id: str, calls: list[ModelCall]) -> None:
         """Persist calls not yet written. The sink is shared across stages, so

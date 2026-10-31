@@ -98,10 +98,9 @@ async def _prepare(client: httpx.AsyncClient, app) -> tuple[str, str, str]:
     ).execute(submitted.run_id, actor_instruction="给五年级使用，保留出处。")
     assert outcome.status == "succeeded", (outcome.error_code, outcome.error_message)
 
+    # The generation run persists its own deterministic report, so the technical
+    # gate is satisfied by real evidence rather than by a test helper.
     delivery = DeliveryService(app.state.uow_factory)
-    await delivery.record_validation(
-        ALICE, outcome.version_id, report=outcome.validation, source_hash="s" * 64, runtime_hash="r" * 64
-    )
     async with app.state.uow_factory() as uow:
         version = await uow.versions.get(outcome.version_id)
     await delivery.submit_review(

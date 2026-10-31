@@ -297,7 +297,7 @@ class ConversationBudget:
     max_turns_per_session: int = 60
     max_turns_per_actor_per_day: int = 200
     max_turns_per_project_per_day: int = 2000
-    max_output_tokens_per_turn: int = 1200
+    max_output_tokens_per_turn: int = 2500
     max_calls_per_turn: int = 2
     currency: str = "CNY"
     max_cost_micros_per_session: int = 2_000_000

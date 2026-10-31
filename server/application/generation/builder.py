@@ -103,7 +103,22 @@ def build_draft_spec(
 
     for scene_index, scene in enumerate(interactive):
         mapped_claims = [claim_ids[i] for i in scene["claim_indexes"] if 0 <= i < len(claim_ids)]
-        content_type = scene["content_type"]
+        # A scene's provenance label follows the claims it actually binds: a
+        # scene holding only adaptation/unconfirmed facts must not call itself
+        # "supported", and a supported scene must keep its claims.
+        bound_types = {
+            claims_payload[index]["content_type"]
+            for index in scene["claim_indexes"]
+            if 0 <= index < len(claims_payload)
+        }
+        if "supported" in bound_types:
+            content_type = "supported"
+        elif "legend" in bound_types:
+            content_type = "legend"
+        elif "adaptation" in bound_types:
+            content_type = "adaptation"
+        else:
+            content_type = scene["content_type"]
         if content_type in {"supported", "legend"} and not mapped_claims:
             raise ValidationFailure(
                 "SCENE_WITHOUT_SUPPORTED_CLAIM",
@@ -123,8 +138,8 @@ def build_draft_spec(
         if not supported_claims:
             raise ValidationFailure(
                 "REQUIRED_TASK_WITHOUT_SUPPORT",
-                "每个交互场景都必须有一条 supported/legend 依据。",
-                {"scene_id": scene["scene_id"]},
+                "每个交互场景都必须有一条 supported/legend 依据；请让 Evidence Agent 标注材料直接陈述的事实。",
+                {"scene_id": scene["scene_id"], "bound_types": sorted(bound_types)},
             )
         if not mapped_objectives:
             raise ValidationFailure(

@@ -129,6 +129,19 @@ class RunService:
             await uow.commit()
         return run
 
+    async def record_failure(self, run_id: str, code: str) -> None:
+        """Mark a run failed when the worker could not even claim it."""
+        async with self._uow() as uow:
+            run = await uow.runs.get_for_update(run_id)
+            if run is None or run.status in (RunStatus.SUCCEEDED, RunStatus.FAILED, RunStatus.CANCELLED):
+                return
+            run.status = RunStatus.FAILED
+            run.error_code = code
+            run.finished_at = utcnow()
+            await uow.runs.save(run)
+            await uow.runs.append_event(run_id, "terminal", {"status": "failed", "error_code": code})
+            await uow.commit()
+
     async def claim(self, run_id: str, owner: str, *, lease_seconds: int = 30) -> Run:
         """Take the lease and return the run. Raises Conflict when not claimable."""
         async with self._uow() as uow:

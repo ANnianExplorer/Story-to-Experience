@@ -268,7 +268,8 @@ class ConversationTurnRow(Base):
     citations: Mapped[list] = mapped_column(JSONType, nullable=False, default=list)
     suggested_actions: Mapped[list] = mapped_column(JSONType, nullable=False, default=list)
     context_json: Mapped[dict | None] = mapped_column(JSONType)
-    provider_call_ref: Mapped[str | None] = mapped_column(sa.String(36))
+    # Gateway request ids are not UUIDs; keep room for provider-specific formats.
+    provider_call_ref: Mapped[str | None] = mapped_column(sa.String(128))
     cost_status: Mapped[str] = mapped_column(sa.String(16), nullable=False, default="unknown")
     cost_micros: Mapped[int | None] = mapped_column(sa.BigInteger)
     error_code: Mapped[str | None] = mapped_column(sa.String(64))

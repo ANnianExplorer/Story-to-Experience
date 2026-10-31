@@ -23,13 +23,6 @@ async def publish(uow_factory, blob_store, scripted_provider, node_validator):
     )
     assert outcome.status == "succeeded", (outcome.error_code, outcome.error_message)
     delivery = DeliveryService(uow_factory)
-    await delivery.record_validation(
-        ALICE,
-        outcome.version_id,
-        report=outcome.validation,
-        source_hash="s" * 64,
-        runtime_hash="r" * 64,
-    )
     async with uow_factory() as uow:
         version = await uow.versions.get(outcome.version_id)
     await delivery.submit_review(

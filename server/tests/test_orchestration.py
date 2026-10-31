@@ -331,3 +331,31 @@ async def test_budget_exhaustion_is_reported_not_faked(uow_factory, blob_store, 
         run = await uow.runs.get(outcome.run_id)
     assert run is not None and run.status.value == "failed"
     assert outcome.version_id is None
+
+
+@pytest.mark.simulated
+async def test_agent_trace_is_persisted_and_readable(uow_factory, blob_store, scripted_provider, node_validator):
+    """F10-AT04: the delegated sub-tasks and their usage must be queryable after the run."""
+    _project, _snapshot, _spans, outcome = await run_generation(
+        uow_factory, blob_store, scripted_provider, node_validator
+    )
+    assert outcome.status == "succeeded"
+    async with uow_factory() as uow:
+        tasks = await uow.agents.tasks_for(outcome.run_id)
+        artifact = await uow.agents.artifact(tasks[0]["artifact_refs"][0])
+
+    roles = [task["role"] for task in tasks]
+    # The coordinator's plan is recorded as agent_plans, not as an agent_task row;
+    # the five specialised/delegated tasks are what the trace endpoint returns.
+    assert roles == ["evidence", "experience_designer", "experience_builder", "review"]
+    for task in tasks:
+        assert task["status"] == "succeeded"
+        assert task["agent_id"] and task["profile_version"]
+        assert task["envelope"]["allowed_tools"], "every envelope records its tool whitelist"
+        assert task["envelope"]["input_hash"]
+        assert task["usage"]["model_calls"] == 1
+        assert task["artifact_refs"], "a successful task must reference its artifact"
+    assert artifact is not None
+    assert artifact["kind"] == "evidence_bundle"
+    assert artifact["artifact_hash"]
+    assert artifact["payload"]["claims"], "the artifact keeps the agent's structured output"

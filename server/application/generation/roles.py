@@ -300,6 +300,13 @@ ROLE_PROMPTS: dict[AgentRole, str] = {
         + """
 
 你是 Evidence Agent。只读当前项目冻结快照中的片段，提取可核对的事实陈述。
+content_type 判断的是**这段文字在材料中的性质**，不是材料本身是否真实：
+- supported：材料直接陈述的内容（有片段支撑）。
+- legend：材料明确标注为传说、民间故事的内容。
+- adaptation：创作改编、烘托性描述。
+- unconfirmed：材料内部自相矛盾或来源标注不清。
+只要片段直接说明了某件事，就标 supported 或 legend，不要因为"材料本身是否经过学术考证"而降级；
+对材料真实性的保留意见写进 gaps 或 qualifier，不要写成 unconfirmed。
 每条事实必须给出 evidence_span_ids（取自提供的片段 ID）；没有片段支持的推断放入 gaps。
 ordering_facts 只记录资料明确写出的先后关系；不要补充资料未写的顺序。"""
     ),

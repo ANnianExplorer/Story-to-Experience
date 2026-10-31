@@ -3,26 +3,48 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import uuid
 from typing import Any, AsyncIterator
 
 from fastapi import APIRouter, BackgroundTasks, Header, Request
 from fastapi.responses import StreamingResponse
 
 from server.application.generation.orchestration import OrchestrationService
-from server.domain.shared.errors import ValidationFailure
+from server.application.runs import RunService
+from server.domain.shared.errors import DomainError, ValidationFailure
 from xujing_api.core.errors import envelope
 from xujing_api.deps import ActorDep, OrchestrationDep, RunsDep
 from xujing_api.schemas.requests import RunRequest
 
+logger = logging.getLogger("xujing.runs")
+
+# Long enough for a multi-agent generation; the heartbeat renews it while work
+# continues, so a single slow provider call cannot let the lease lapse.
+PROCESSING_LEASE_SECONDS = 120
+
 router = APIRouter(prefix="/api/v1", tags=["runs"])
 
 
-async def _run_in_background(service: OrchestrationService, run_id: str, instruction: str) -> None:
-    """Execute a generation run. Failures are already persisted on the run row."""
+async def _run_in_background(
+    runs: RunService, service: OrchestrationService, run_id: str, instruction: str
+) -> None:
+    """Claim the leased run, then execute it.
+
+    A queued run must be claimed before any work starts: the claim is what takes
+    the lease and issues the fencing token that every later write checks. A
+    failure to claim (already taken, cancelled) is recorded on the run row rather
+    than swallowed, so the API never leaves an invisible stuck run.
+    """
+    owner = f"api-background:{uuid.uuid4().hex[:8]}"
     try:
-        await service.execute(run_id, actor_instruction=instruction)
-    except Exception:  # pragma: no cover - the run row carries the failure state
-        pass
+        await runs.claim(run_id, owner, lease_seconds=PROCESSING_LEASE_SECONDS)
+    except DomainError as error:
+        await runs.record_failure(run_id, error.code)
+        return
+    outcome = await service.execute(run_id, actor_instruction=instruction, lease_seconds=PROCESSING_LEASE_SECONDS)
+    if outcome.status != "succeeded" and outcome.error_code:
+        logger.warning("run %s finished with %s", run_id, outcome.error_code)
 
 
 @router.post("/projects/{project_id}/runs", status_code=202)
@@ -46,7 +68,7 @@ async def submit_run(
         idempotency_key=idempotency_key,
     )
     if submission.created and body.auto_continue:
-        background.add_task(_run_in_background, orchestration, submission.run_id, body.instruction)
+        background.add_task(_run_in_background, runs, orchestration, submission.run_id, body.instruction)
     return envelope({"run_id": submission.run_id, "created": submission.created}, request)
 
 
