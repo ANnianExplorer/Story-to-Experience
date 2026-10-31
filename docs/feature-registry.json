@@ -86,11 +86,13 @@
         "server/domain/projects.py",
         "server/application/projects.py",
         "apps/api/xujing_api/routers/projects.py",
-        "apps/api/xujing_api/main.py"
+        "apps/api/xujing_api/main.py",
+        "apps/workbench/src/pages/project-workbench.tsx"
       ],
       "evidence": [
         "docs/quality/reports/2026-10-31-backend-slice-1.md",
-        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md",
+        "docs/quality/reports/2026-10-31-browser-acceptance.md"
       ]
     },
     {
@@ -168,7 +170,9 @@
         "server/infrastructure/storage/blobs.py"
       ],
       "evidence": [
-        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+        "docs/quality/reports/2026-10-31-backend-slice-1.md",
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md",
+        "docs/quality/reports/2026-10-31-browser-acceptance.md"
       ]
     },
     {
@@ -251,7 +255,9 @@
         "server/application/generation/spec_validation.py"
       ],
       "evidence": [
-        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+        "docs/quality/reports/2026-10-31-backend-slice-1.md",
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md",
+        "docs/quality/reports/2026-10-31-browser-acceptance.md"
       ]
     },
     {
@@ -338,10 +344,13 @@
       ],
       "implementation_paths": [
         "packages/engine/src/engine.ts",
-        "packages/contracts/generated/experience-spec.ts"
+        "apps/experience/src/lib/session.ts",
+        "apps/experience/src/components/scene-view.tsx"
       ],
       "evidence": [
-        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+        "docs/quality/reports/2026-10-31-backend-slice-1.md",
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md",
+        "docs/quality/reports/2026-10-31-browser-acceptance.md"
       ]
     },
     {
@@ -421,7 +430,9 @@
         "server/infrastructure/validation/node_validator.py"
       ],
       "evidence": [
-        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+        "docs/quality/reports/2026-10-31-backend-slice-1.md",
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md",
+        "docs/quality/reports/2026-10-31-browser-acceptance.md"
       ]
     },
     {
@@ -499,7 +510,9 @@
         "server/domain/runs.py"
       ],
       "evidence": [
-        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+        "docs/quality/reports/2026-10-31-backend-slice-1.md",
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md",
+        "docs/quality/reports/2026-10-31-browser-acceptance.md"
       ]
     },
     {
@@ -579,7 +592,9 @@
         "server/application/delivery.py"
       ],
       "evidence": [
-        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+        "docs/quality/reports/2026-10-31-backend-slice-1.md",
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md",
+        "docs/quality/reports/2026-10-31-browser-acceptance.md"
       ]
     },
     {
@@ -659,7 +674,9 @@
         "server/domain/delivery.py"
       ],
       "evidence": [
-        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+        "docs/quality/reports/2026-10-31-backend-slice-1.md",
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md",
+        "docs/quality/reports/2026-10-31-browser-acceptance.md"
       ]
     },
     {
@@ -819,7 +836,9 @@
         "server/domain/agents.py"
       ],
       "evidence": [
-        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+        "docs/quality/reports/2026-10-31-backend-slice-1.md",
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md",
+        "docs/quality/reports/2026-10-31-browser-acceptance.md"
       ]
     },
     {
@@ -922,10 +941,14 @@
       "implementation_paths": [
         "server/application/conversations/service.py",
         "server/domain/conversations.py",
-        "server/application/conversations/retrieval.py"
+        "server/application/conversations/retrieval.py",
+        "apps/workbench/src/components/chat-panel.tsx",
+        "apps/experience/src/components/guide-panel.tsx"
       ],
       "evidence": [
-        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+        "docs/quality/reports/2026-10-31-backend-slice-1.md",
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md",
+        "docs/quality/reports/2026-10-31-browser-acceptance.md"
       ]
     }
   ]
