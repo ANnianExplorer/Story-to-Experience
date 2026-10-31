@@ -1,0 +1,91 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e7]:
+      - heading "叙境" [level=1] [ref=e8]
+      - paragraph [ref=e9]: 多 Agent 协作的文化体验工作台
+    - generic [ref=e10]:
+      - generic [ref=e11]: 真实模型 · anthropic-gateway
+      - generic [ref=e30]: 程序检查可用
+    - navigation "导航" [ref=e12]:
+      - button "全部项目" [ref=e13] [cursor=pointer]
+      - generic [ref=e32]: / 24f3ce69
+  - generic [ref=e33]:
+    - heading "浏览器验收项目" [level=2] [ref=e34]
+    - generic [ref=e35]: 阶段：生成中
+  - main [ref=e36]:
+    - region "资料与证据" [ref=e38]:
+      - heading "资料与证据" [level=2] [ref=e39]
+      - generic [ref=e40]:
+        - text: 正文
+        - textbox "正文" [ref=e41]: 合成教学材料（非真实非遗工艺，仅用于演示） 工坊里的小铲用来翻松陶土。 翻松陶土之后要先阴干，再入窑。 入窑之前需要检查湿度。
+      - generic [ref=e42]:
+        - text: 授权说明
+        - textbox "授权说明" [ref=e43]: 合成教学样例，允许演示使用。
+      - generic [ref=e44]:
+        - button "上传并解析" [ref=e45] [cursor=pointer]
+        - button "冻结证据快照" [disabled] [ref=e46]
+      - heading "片段 4" [level=3] [ref=e69]
+      - list [ref=e70]:
+        - listitem [ref=e71]:
+          - paragraph [ref=e72]: 合成教学材料（非真实非遗工艺，仅用于演示）
+          - generic [ref=e73]:
+            - textbox "事实陈述" [ref=e74]: 合成教学材料（非真实非遗工艺，仅用于演示）
+            - button "记为事实" [ref=e75] [cursor=pointer]
+        - listitem [ref=e76]:
+          - paragraph [ref=e77]: 工坊里的小铲用来翻松陶土。
+          - generic [ref=e78]:
+            - textbox "事实陈述" [ref=e79]: 工坊里的小铲用来翻松陶土。
+            - button "记为事实" [ref=e80] [cursor=pointer]
+        - listitem [ref=e81]:
+          - paragraph [ref=e82]: 翻松陶土之后要先阴干，再入窑。
+          - generic [ref=e83]:
+            - textbox "事实陈述" [ref=e84]: 翻松陶土之后要先阴干，再入窑。
+            - button "记为事实" [ref=e85] [cursor=pointer]
+        - listitem [ref=e86]:
+          - paragraph [ref=e87]: 入窑之前需要检查湿度。
+          - generic [ref=e88]:
+            - textbox "事实陈述" [ref=e89]: 入窑之前需要检查湿度。
+            - button "记为事实" [ref=e90] [cursor=pointer]
+      - heading "事实 3" [level=3] [ref=e98]
+      - list [ref=e92]:
+        - listitem [ref=e93]:
+          - generic [ref=e94]: supported
+          - text: 工坊里的小铲用来翻松陶土。
+        - listitem [ref=e96]:
+          - generic [ref=e97]: supported
+          - text: 翻松陶土之后要先阴干，再入窑。
+        - listitem [ref=e99]:
+          - generic [ref=e100]: supported
+          - text: 入窑之前需要检查湿度。
+    - generic [ref=e50]:
+      - region "生成与执行轨迹" [ref=e51]:
+        - heading "生成与执行轨迹" [level=2] [ref=e52]
+        - generic [ref=e53]:
+          - text: 创作要求（自然语言）
+          - textbox "创作要求（自然语言）" [ref=e54]: 给五年级使用，六分钟，保留出处，先做一个可试玩的候选。
+        - generic [ref=e55]:
+          - button "开始生成" [disabled] [ref=e56]
+          - button "取消" [ref=e57] [cursor=pointer]
+        - generic [ref=e101]:
+          - generic [ref=e102]:
+            - term [ref=e103]: 状态
+            - definition [ref=e104]: queued
+          - generic [ref=e105]:
+            - term [ref=e106]: 阶段
+            - definition [ref=e107]: plan
+          - generic [ref=e108]:
+            - term [ref=e109]: 预算
+            - definition [ref=e110]: 0/12 次调用 · 修复 0/2 轮
+        - heading "Agent 子任务 0" [level=3] [ref=e58]
+        - list
+      - region "创作共创" [ref=e59]:
+        - heading "创作共创" [level=2] [ref=e60]
+        - paragraph [ref=e61]: AI 可以解释、检索与提计划，但不会替你发布；所有修改仍走受控用例。
+        - log
+        - generic [ref=e62]:
+          - textbox "例如：为什么 A 要排在 C 前面？如果没有依据请直接说明。" [ref=e63]
+          - button "发送" [disabled] [ref=e64]
+    - region "版本与审核" [ref=e66]:
+      - heading "版本与审核" [level=2] [ref=e67]
+      - paragraph [ref=e68]: 尚未生成候选。完成一次生成后在此查看版本。
+      - list

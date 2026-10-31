@@ -264,3 +264,58 @@ async def test_guide_citations_are_limited_to_public_scope(uow_factory, blob_sto
     execution = await service.execute_turn(turn.id)
     assert execution.turn.citations == (), "a span outside the session scope must be dropped"
     assert execution.turn.suggested_actions == (), "non-whitelisted actions must be dropped"
+
+
+@pytest.mark.simulated
+async def test_revoked_share_stops_an_already_queued_turn(uow_factory, blob_store, scripted_provider, node_validator):
+    """Revocation must stop model work even for a turn queued before it."""
+    from server.application.delivery import DeliveryService
+    from server.domain.shared.errors import Conflict
+
+    project, _snapshot, _spans, outcome = await await_or_make(uow_factory, blob_store, scripted_provider)
+    delivery = DeliveryService(uow_factory)
+    async with uow_factory() as uow:
+        version = await uow.versions.get(outcome.version_id)
+    await delivery.submit_review(
+        ALICE,
+        outcome.version_id,
+        decision="approved",
+        notes="合成样例",
+        coverage_claim_ids=[claim["id"] for claim in version["spec"]["claims"]],
+        expected_semantic_hash=version["semantic_hash"],
+    )
+    _share, token = await delivery.create_share(
+        ALICE, project.id, version_id=outcome.version_id, license_ack=True, hours=1
+    )
+    opened = await delivery.create_experience_session(token, ALICE)
+
+    provider = BoundGuideProvider()
+    service = ConversationService(uow_factory, provider, provider_is_mock=True)
+    session = await service.create_guide_session_from_experience(
+        experience_session_id=opened["session_id"], actor_id=ALICE
+    )
+    turn, _ = await service.submit_turn(ALICE, session.id, client_turn_id="rev-1", message="这一步有依据吗？")
+
+    async with uow_factory() as uow:
+        await uow.conversations.revoke_sessions_for_share(_share.id)
+        await uow.commit()
+
+    with pytest.raises(Conflict):
+        await service.execute_turn(turn.id)
+    assert provider.calls == [], "a revoked session must not reach the provider"
+
+
+@pytest.mark.simulated
+async def test_turn_claim_is_single_use(uow_factory, blob_store, scripted_provider, node_validator):
+    """A second execution of a finished turn returns the stored result and calls no model."""
+    project, _snapshot, _spans, _outcome = await await_or_make(uow_factory, blob_store, scripted_provider)
+    provider = BoundGuideProvider()
+    service = ConversationService(uow_factory, provider, provider_is_mock=True)
+    session = await service.create_creator_session(ALICE, project.id)
+    turn, _ = await service.submit_turn(ALICE, session.id, client_turn_id="once", message="这是什么？")
+    first = await service.execute_turn(turn.id)
+    calls_after_first = len(provider.calls)
+    second = await service.execute_turn(turn.id)
+    assert len(provider.calls) == calls_after_first, "re-execution must not spend another model call"
+    assert second.turn.status is first.turn.status
+    assert second.turn.final_text == first.turn.final_text

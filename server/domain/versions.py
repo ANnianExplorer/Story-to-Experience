@@ -80,6 +80,15 @@ def check_patch_path(path: str) -> None:
     if "~" in path.replace("~0", "").replace("~1", ""):
         raise ValidationFailure("INVALID_PATCH_PATH", "补丁路径含非法转义。", {"path": path[:200]})
     decoded = path.replace("~1", "/").replace("~0", "~")
+    # JSON Pointer indices address array positions, never from the end; a
+    # negative segment would let a patch rewrite the last scene.
+    for segment in decoded.split("/")[1:]:
+        if segment.lstrip("-").isdigit() and segment.startswith("-"):
+            raise ValidationFailure(
+                "PATCH_PATH_FORBIDDEN",
+                "补丁路径不能使用负索引。",
+                {"path": decoded[:200]},
+            )
     for prefix in FORBIDDEN_PATCH_PREFIXES:
         if decoded == prefix or decoded.startswith(prefix + "/"):
             raise ValidationFailure("PATCH_PATH_FORBIDDEN", "该路径不允许由模型补丁修改。", {"path": decoded[:200]})

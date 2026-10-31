@@ -617,7 +617,18 @@ class AgentRepository:
         self._session = session
 
     async def save_plan(self, plan: Plan, plan_hash: str) -> None:
-        self._session.add(AgentPlanRow(run_id=plan.run_id, plan_hash=plan_hash, payload=plan.to_payload(), created_at=_now()))
+        """Persist the plan; re-executing the same run replaces it rather than
+        violating the run_id primary key (R06 stage idempotency)."""
+        existing = await self._session.get(AgentPlanRow, plan.run_id)
+        if existing is None:
+            self._session.add(
+                AgentPlanRow(
+                    run_id=plan.run_id, plan_hash=plan_hash, payload=plan.to_payload(), created_at=_now()
+                )
+            )
+        else:
+            existing.plan_hash = plan_hash
+            existing.payload = plan.to_payload()
         await self._session.flush()
 
     async def get_plan(self, run_id: str) -> dict[str, Any] | None:
@@ -625,6 +636,9 @@ class AgentRepository:
         return row.payload if row else None
 
     async def create_task(self, envelope: AgentTaskEnvelope) -> None:
+        existing = await self._session.get(AgentTaskRow, envelope.task_id)
+        if existing is not None:
+            return
         now = _now()
         self._session.add(
             AgentTaskRow(
@@ -923,6 +937,30 @@ class ConversationRepository:
     async def get_turn(self, turn_id: str) -> ConversationTurn | None:
         row = await self._session.get(ConversationTurnRow, turn_id)
         return self._turn(row) if row else None
+
+    async def get_turn_for_update(self, turn_id: str) -> ConversationTurn | None:
+        """Row-locked read used to claim or finalise a turn exactly once."""
+        stmt = select(ConversationTurnRow).where(ConversationTurnRow.id == turn_id).with_for_update()
+        row = (await self._session.execute(stmt)).scalar_one_or_none()
+        return self._turn(row) if row else None
+
+    async def count_turns_by_actor(self, actor_id: str) -> int:
+        stmt = (
+            select(sa.func.count())
+            .select_from(ConversationTurnRow)
+            .join(ConversationSessionRow, ConversationSessionRow.id == ConversationTurnRow.session_id)
+            .where(ConversationSessionRow.actor_id == actor_id)
+        )
+        return int((await self._session.execute(stmt)).scalar_one())
+
+    async def count_turns_in_project(self, project_id: str) -> int:
+        stmt = (
+            select(sa.func.count())
+            .select_from(ConversationTurnRow)
+            .join(ConversationSessionRow, ConversationSessionRow.id == ConversationTurnRow.session_id)
+            .where(ConversationSessionRow.project_id == project_id)
+        )
+        return int((await self._session.execute(stmt)).scalar_one())
 
     async def recent_messages(self, session_id: str, limit: int) -> list[dict[str, str]]:
         stmt = (

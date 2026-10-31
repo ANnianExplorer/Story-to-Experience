@@ -1,0 +1,29 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - generic [ref=e7]:
+      - heading "叙境" [level=1] [ref=e8]
+      - paragraph [ref=e9]: 多 Agent 协作的文化体验工作台
+    - generic [ref=e11]: 后端未连接
+    - navigation "导航" [ref=e12]:
+      - button "全部项目" [ref=e13] [cursor=pointer]
+  - main [ref=e14]:
+    - region "新建项目" [ref=e15]:
+      - heading "新建项目" [level=2] [ref=e16]
+      - generic [ref=e17]:
+        - generic [ref=e18]:
+          - text: 项目名
+          - textbox "项目名" [ref=e19]: 未命名文化体验
+        - generic [ref=e20]:
+          - text: 受众
+          - textbox "受众" [ref=e21]: 五年级学生
+        - generic [ref=e22]:
+          - text: 时长（分钟）
+          - spinbutton "时长（分钟）" [ref=e23]: "6"
+        - generic [ref=e24]:
+          - text: 教学目标（每行一条）
+          - textbox "教学目标（每行一条）" [ref=e25]: 观察工具用途 理解工序先后
+        - button "创建项目" [ref=e26] [cursor=pointer]
+    - region "我的项目" [ref=e27]:
+      - heading "我的项目" [level=2] [ref=e28]
+      - paragraph [ref=e29]: 正在加载…
+      - list

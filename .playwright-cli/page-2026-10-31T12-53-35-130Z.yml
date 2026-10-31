@@ -1,0 +1,54 @@
+- generic [ref=e3]:
+  - banner [ref=e5]:
+    - paragraph [ref=e6]: 叙境 · 文化体验
+    - paragraph [ref=e7]: 固定版本 59ba2e3e · 动画与出处不影响任务判定
+  - main [ref=e8]:
+    - region "排一排：从松土到入窑" [ref=e39]:
+      - paragraph [ref=e10]: 资料场景
+      - heading "排一排：从松土到入窑" [level=2] [ref=e40]
+      - paragraph [ref=e12]: 步骤卡有：翻松陶土、阴干、入窑、检查湿度。资料写明的先后是：翻松陶土之后要先阴干，再入窑；入窑之前需要检查湿度。请把卡排好，让这些先后都成立。阴干要多久、怎么判断已干好，资料没有写，不需要你补。
+      - generic [ref=e41]:
+        - heading "把步骤卡排出先后" [level=3] [ref=e42]
+        - list [ref=e43]:
+          - listitem [ref=e44]:
+            - generic [ref=e45]: 翻松陶土
+            - generic [ref=e46]:
+              - button "上移" [disabled] [ref=e47]: ↑
+              - button "下移" [ref=e48] [cursor=pointer]: ↓
+          - listitem [ref=e54]:
+            - generic [ref=e55]: 入窑
+            - generic [ref=e56]:
+              - button "上移" [active] [ref=e57] [cursor=pointer]: ↑
+              - button "下移" [ref=e58] [cursor=pointer]: ↓
+          - listitem [ref=e49]:
+            - generic [ref=e50]: 阴干
+            - generic [ref=e51]:
+              - button "上移" [ref=e52] [cursor=pointer]: ↑
+              - button "下移" [ref=e53] [cursor=pointer]: ↓
+          - listitem [ref=e59]:
+            - generic [ref=e60]: 检查湿度
+            - generic [ref=e61]:
+              - button "上移" [ref=e62] [cursor=pointer]: ↑
+              - button "下移" [disabled] [ref=e63]: ↓
+        - button "提交顺序" [ref=e64] [cursor=pointer]
+        - button "给一点提示" [ref=e65] [cursor=pointer]
+      - status [ref=e17]: 资料只明确写了相邻的先后，不要补时长。
+      - status [ref=e30]: 继续
+      - generic [ref=e18]:
+        - button "继续" [ref=e66] [cursor=pointer]
+        - button "收起出处" [expanded] [ref=e31] [cursor=pointer]
+      - complementary [ref=e32]:
+        - list [ref=e33]:
+          - listitem [ref=e67]:
+            - generic [ref=e68]: supported
+            - text: 翻松陶土之后要先阴干，再入窑。
+        - paragraph [ref=e38]: 出处开关只影响展示，不会改变任务状态。
+    - region "问问导览" [ref=e21]:
+      - heading "问问导览" [level=2] [ref=e22]
+      - paragraph [ref=e23]: 小铲引导员是改编角色，对白为创作，不是历史原话。
+      - log
+      - generic [ref=e24]:
+        - textbox "例如：为什么这一步必须排在后面？" [ref=e25]
+        - button "提问" [disabled] [ref=e26]
+  - contentinfo [ref=e27]:
+    - paragraph [ref=e28]: 本页由 sea-paper-light 主题渲染。角色对白为改编创作，事实陈述可在场景内展开出处核对。

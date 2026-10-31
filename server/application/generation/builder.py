@@ -283,6 +283,16 @@ def _build_task(
         index = fact["claim_index"]
         if not 0 <= index < len(claims_payload):
             raise ValidationFailure("ORDERING_CLAIM_UNKNOWN", "先后关系引用了不存在的事实下标。")
+        # The ordering must be backed by a claim that itself carries evidence.
+        # An invented order attached to an adaptation or evidence-free claim
+        # would otherwise be graded as correct (R03).
+        claim = claims_payload[index]
+        if claim["content_type"] not in {"supported", "legend"} or not claim["evidence_span_ids"]:
+            raise ValidationFailure(
+                "ORDERING_WITHOUT_EVIDENCE",
+                "先后关系必须由带证据的 supported/legend 事实支持，不能由改编或待确认内容生成排序题。",
+                {"before": fact["before"], "after": fact["after"], "claim_index": index},
+            )
         precedence.append(
             {"before": fact["before"], "after": fact["after"], "claim_id": claim_ids_by_name[index]}
         )

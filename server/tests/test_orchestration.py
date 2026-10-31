@@ -359,3 +359,105 @@ async def test_agent_trace_is_persisted_and_readable(uow_factory, blob_store, sc
     assert artifact["kind"] == "evidence_bundle"
     assert artifact["artifact_hash"]
     assert artifact["payload"]["claims"], "the artifact keeps the agent's structured output"
+
+
+@pytest.mark.simulated
+async def test_failed_stage_still_records_its_calls(uow_factory, blob_store, node_validator):
+    """A stage that spends calls and then fails must leave a cost trail (R09)."""
+    from server.tests.providers import ScriptedProvider
+
+    provider = ScriptedProvider(script.scripted({"experience_designer": "这不是 JSON"}))
+    _project, _snapshot, _spans, outcome = await run_generation(uow_factory, blob_store, provider, node_validator)
+    assert outcome.status == "failed"
+    async with uow_factory() as uow:
+        calls = await uow.runs.calls_for(outcome.run_id)
+        run = await uow.runs.get(outcome.run_id)
+        events = await uow.runs.events_since(outcome.run_id, 0)
+    assert len(calls) >= 3, "coordinator + evidence + designer attempts must be recorded"
+    assert any(call.cost_status.value == "unknown" for call in calls)
+    assert run is not None and run.budget.calls_settled >= 3
+    assert any(event["type"] == "terminal" for event in events)
+
+
+@pytest.mark.simulated
+async def test_sequence_requires_evidence_backed_ordering(uow_factory, blob_store, node_validator):
+    """An invented ordering attached to an adaptation claim must be refused (R03)."""
+    from server.application.generation.builder import build_draft_spec
+    from server.domain.shared.errors import ValidationFailure
+
+    blueprint = script.blueprint_payload()
+    evidence = script.evidence_payload()
+    evidence["claims"][2]["content_type"] = "adaptation"  # B<C loses its provenance
+    with pytest.raises(ValidationFailure) as error:
+        build_draft_spec(
+            blueprint=blueprint,
+            evidence=evidence,
+            brief={"audience": "五年级", "duration_minutes": 5, "learning_goals": ["观察"]},
+            snapshot_id="10000000-0000-4000-8000-000000000001",
+            known_claim_ids={},
+        )
+    assert error.value.code in {"ORDERING_WITHOUT_EVIDENCE", "REQUIRED_TASK_WITHOUT_SUPPORT"}
+
+
+def test_patch_path_rejects_negative_indexes() -> None:
+    from server.domain.shared.errors import ValidationFailure
+    from server.domain.versions import check_patch_path
+
+    check_patch_path("/scenes/1/text")
+    for bad in ("/scenes/-1/text", "/scenes/-1/tasks/0/completion_flag"):
+        with pytest.raises(ValidationFailure) as error:
+            check_patch_path(bad)
+        assert error.value.code == "PATCH_PATH_FORBIDDEN"
+
+
+@pytest.mark.simulated
+async def test_stale_worker_cannot_mark_a_reclaimed_run_failed(uow_factory, blob_store, scripted_provider, node_validator):
+    """Only the current lease holder may record a failure (fencing).
+
+    The stale worker is simulated by running the orchestration with an outdated
+    fencing token: its error path must leave the run untouched.
+    """
+    from server.application.generation.orchestration import OrchestrationService
+    from server.application.runs import RunService
+    from server.domain.runs import RunStatus
+
+    project, _snapshot, _spans, snapshot = await seed_project(uow_factory, blob_store)
+    runs = RunService(uow_factory)
+    submission = await runs.submit_generation(
+        ALICE,
+        project.id,
+        source_snapshot_id=snapshot.id,
+        brief_revision=project.brief_revision,
+        idempotency_key="fence-1",
+    )
+    stale = await runs.claim(submission.run_id, "worker-a")
+    # A second worker takes the lease: token advances, owner changes.
+    await runs.claim(submission.run_id, "worker-b")
+
+    class FailingProvider:
+        name = "failing-mock"
+        is_mock = True
+
+        async def complete(self, **kwargs):  # type: ignore[no-untyped-def]
+            from server.domain.shared.errors import Conflict
+
+            raise Conflict("BUDGET_EXHAUSTED", "simulated failure for the stale worker")
+
+        async def stream(self, **kwargs):  # type: ignore[no-untyped-def]
+            raise AssertionError("not used")
+
+    service = OrchestrationService(uow_factory, FailingProvider(), node_validator, provider_is_mock=True)
+    # The stale worker still believes it owns token 1; execute refuses to start.
+    from server.domain.shared.errors import Conflict
+
+    with pytest.raises(Conflict) as error:
+        await service.execute(
+            submission.run_id, actor_instruction="", owner="worker-a", fencing_token=stale.fencing_token
+        )
+    assert error.value.code == "STALE_FENCING_TOKEN"
+
+    async with uow_factory() as uow:
+        run = await uow.runs.get(submission.run_id)
+    assert run is not None
+    assert run.status is RunStatus.RUNNING, "the newer owner's run must stay running"
+    assert run.lease_owner == "worker-b"

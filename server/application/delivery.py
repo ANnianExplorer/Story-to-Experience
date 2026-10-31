@@ -106,6 +106,19 @@ class DeliveryService:
     ) -> None:
         async with self._uow() as uow:
             version = await self._owned_version(uow, actor_id, version_id)
+            # A report only applies to the exact content it checked. Recording a
+            # foreign report against this version's hash would let an unchecked
+            # version pass the technical gate (R10).
+            reported_spec = str(report.get("spec_hash", ""))
+            if reported_spec and reported_spec != version["spec_hash"]:
+                raise Conflict(
+                    "REPORT_SPEC_MISMATCH",
+                    "校验报告对应的规格哈希与当前版本不一致。",
+                    object_id=version_id,
+                )
+            status = str(report.get("status", "not_run"))
+            if status not in {"passed", "failed", "inconclusive"}:
+                raise ValidationFailure("INVALID_REPORT_STATUS", "校验报告状态不合法。", {"status": status})
             await uow.reviews.add_report(
                 report_id=new_id(),
                 version_id=version_id,
@@ -115,7 +128,7 @@ class DeliveryService:
                 runtime_hash=runtime_hash,
                 checker_version=str(report.get("checker_version", "unknown")),
                 layer="full",
-                status=str(report.get("status", "not_run")),
+                status=status,
                 evidence_manifest={
                     "search": report.get("search"),
                     "findings": report.get("findings"),

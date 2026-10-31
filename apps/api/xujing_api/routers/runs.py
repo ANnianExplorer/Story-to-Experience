@@ -38,11 +38,17 @@ async def _run_in_background(
     """
     owner = f"api-background:{uuid.uuid4().hex[:8]}"
     try:
-        await runs.claim(run_id, owner, lease_seconds=PROCESSING_LEASE_SECONDS)
+        claimed = await runs.claim(run_id, owner, lease_seconds=PROCESSING_LEASE_SECONDS)
     except DomainError as error:
         await runs.record_failure(run_id, error.code)
         return
-    outcome = await service.execute(run_id, actor_instruction=instruction, lease_seconds=PROCESSING_LEASE_SECONDS)
+    outcome = await service.execute(
+        run_id,
+        actor_instruction=instruction,
+        lease_seconds=PROCESSING_LEASE_SECONDS,
+        owner=owner,
+        fencing_token=claimed.fencing_token,
+    )
     if outcome.status != "succeeded" and outcome.error_code:
         logger.warning("run %s finished with %s", run_id, outcome.error_code)
 

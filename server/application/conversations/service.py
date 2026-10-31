@@ -279,8 +279,8 @@ class ConversationService:
             turns_in_session = await uow.conversations.count_turns(session_id)
             self._budget.check_limits(
                 turns_in_session=turns_in_session,
-                turns_by_actor=0,
-                turns_in_project=0,
+                turns_by_actor=await uow.conversations.count_turns_by_actor(session.actor_id),
+                turns_in_project=await uow.conversations.count_turns_in_project(session.project_id),
             )
             context_hash = canonical_sha256(
                 {
@@ -352,14 +352,22 @@ class ConversationService:
             )
 
         async with self._uow() as uow:
-            turn = await uow.conversations.get_turn(turn_id)
+            turn = await uow.conversations.get_turn_for_update(turn_id)
             if turn is None:
                 raise NotFound(object_id=turn_id)
             session = await uow.conversations.get_session(turn.session_id)
             if session is None:
                 raise NotFound(object_id=turn_id)
+            # A revoked share (or an expired session) must stop further model
+            # work, even for a turn that was queued before the revocation.
+            session.require_active(_now())
             if turn.status in (TurnStatus.SUCCEEDED, TurnStatus.FAILED, TurnStatus.CANCELLED):
                 return TurnExecution(turn=turn, events=events)
+            # Claim the turn atomically: two concurrent executions (a retried
+            # request, a duplicate worker) must not both call the provider.
+            turn.start_streaming()
+            await uow.conversations.save_turn(turn)
+            await uow.commit()
             profile_payload = await uow.conversations.session_profile(session.id)
             history = await uow.conversations.recent_messages(session.id, limit=8)
             version_id = session.version_id
@@ -378,7 +386,6 @@ class ConversationService:
                 snapshot_id = version["spec"].get("source_snapshot_id")
                 snapshot = await uow.evidence.get_snapshot(snapshot_id) if snapshot_id else None
                 creator_snapshot = snapshot
-        turn.start_streaming()
         emit("text_delta", {"text": ""})
 
         if looks_like_injection(turn.user_message):
@@ -429,6 +436,29 @@ class ConversationService:
             emit("error", {"code": turn.error_code, "message": str(error)[:200]})
             return TurnExecution(turn=turn, events=events)
 
+        try:
+            return await self._finalise_turn(
+                turn, events, emit, response, version, spans, source_labels
+            )
+        except Exception as error:  # never leave the turn stuck in `streaming`
+            turn.fail(getattr(error, "code", "TURN_FAILED"))
+            async with self._uow() as uow:
+                await uow.conversations.save_turn(turn)
+                await uow.commit()
+            emit("error", {"code": turn.error_code, "message": str(error)[:200]})
+            return TurnExecution(turn=turn, events=events)
+
+    async def _finalise_turn(
+        self,
+        turn: ConversationTurn,
+        events: list[TurnEvent],
+        emit: Any,
+        response: Any,
+        version: dict[str, Any] | None,
+        spans: list[dict[str, object]],
+        source_labels: dict[str, str],
+    ) -> TurnExecution:
+        allowed = {span["span_id"] for span in spans}
         payload = _parse_model_json(response.text)
         if payload and payload.get("answer"):
             answer = str(payload["answer"]).strip()[: self._budget.max_output_tokens_per_turn * 4]
@@ -481,10 +511,22 @@ class ConversationService:
             emit("citation", citation.to_payload())
         for action in actions:
             emit("action_proposed", action.to_payload())
-        turn.complete(answer, citations, actions, answerability)
         async with self._uow() as uow:
-            await uow.conversations.save_turn(turn)
+            persisted = await uow.conversations.get_turn_for_update(turn.id)
+            if persisted is None:
+                raise NotFound(object_id=turn.id)
+            if persisted.status is TurnStatus.CANCELLED:
+                # Cancelled while the model was running: the partial work is
+                # discarded and the caller keeps the cancelled terminal state.
+                return TurnExecution(turn=persisted, events=events)
+            persisted.partial_text = turn.partial_text
+            persisted.provider_call_ref = turn.provider_call_ref
+            persisted.cost_status = turn.cost_status
+            persisted.cost_micros = turn.cost_micros
+            persisted.complete(answer, citations, actions, answerability)
+            await uow.conversations.save_turn(persisted)
             await uow.commit()
+            turn = persisted
         emit("completed", {"turn_id": turn.id, "answerability": answerability.value, "cost_status": turn.cost_status})
         return TurnExecution(turn=turn, events=events)
 

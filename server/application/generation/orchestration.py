@@ -300,6 +300,8 @@ class OrchestrationService:
         *,
         actor_instruction: str = "",
         lease_seconds: int = 30,
+        owner: str | None = None,
+        fencing_token: int | None = None,
     ) -> GenerationOutcome:
         """Run the full generation DAG for a claimed run. Never raises on model errors.
 
@@ -321,8 +323,11 @@ class OrchestrationService:
                 raise ValidationFailure("SNAPSHOT_REQUIRED", "缺少冻结来源快照。")
             claims = await uow.evidence.latest_claims(run.project_id)
             brief = project.brief.to_payload()
-            token = run.fencing_token
-            owner = run.lease_owner or "worker"
+            # Prefer the caller's claim. Falling back to the row's values would
+            # let a worker that lost its lease adopt the new owner's token.
+            token = fencing_token if fencing_token is not None else run.fencing_token
+            lease_owner = owner if owner is not None else (run.lease_owner or "worker")
+            run.require_active_writer(token, lease_owner)
             base_version_id = project.revision_head_id
 
         trace: list[AgentTrace] = []
@@ -341,7 +346,7 @@ class OrchestrationService:
         candidate_payload: dict[str, Any] | None = None
 
         heartbeat = asyncio.create_task(
-            self._heartbeat(run_id, owner, token, max(1, lease_seconds // 3), lease_seconds)
+            self._heartbeat(run_id, lease_owner, token, max(1, lease_seconds // 3), lease_seconds)
         )
         try:
             plan, plan_payload, plan_trace, plan_calls = await self.build_plan(
@@ -359,20 +364,20 @@ class OrchestrationService:
             await self._record_calls(run_id, plan_calls)
 
             evidence_payload, evidence_trace, evidence_calls = await self._run_evidence(
-                run, owner, snapshot, claims, plan, gaps, calls
+                run, lease_owner, snapshot, claims, plan, gaps, calls
             )
             trace.append(evidence_trace)
             await self._record_calls(run_id, evidence_calls)
 
             blueprint_payload, blueprint_trace, blueprint_calls = await self._run_designer(
-                run, owner, snapshot, evidence_payload, plan, brief, actor_instruction, calls
+                run, lease_owner, snapshot, evidence_payload, plan, brief, actor_instruction, calls
             )
             trace.append(blueprint_trace)
             await self._record_calls(run_id, blueprint_calls)
 
             known_claims = {claim.statement: claim.id for claim in claims}
             candidate_payload, builder_trace, builder_calls = await self._run_builder(
-                run, owner, snapshot, blueprint_payload, evidence_payload, brief, plan, calls, known_claims
+                run, lease_owner, snapshot, blueprint_payload, evidence_payload, brief, plan, calls, known_claims
             )
             trace.append(builder_trace)
             await self._record_calls(run_id, builder_calls)
@@ -383,7 +388,7 @@ class OrchestrationService:
             # Review (model) and validation (deterministic) run concurrently and
             # must both finish before the candidate is committed (F10-R03).
             review_task = asyncio.create_task(
-                self._run_review(run, owner, snapshot, spec, blueprint_payload, evidence_payload, plan, calls)
+                self._run_review(run, lease_owner, snapshot, spec, blueprint_payload, evidence_payload, plan, calls)
             )
             validation_task = asyncio.create_task(
                 self._run_validation(run.project_id, spec, snapshot, evidence_payload)
@@ -412,7 +417,7 @@ class OrchestrationService:
                 repair_rounds += 1
                 candidate_payload, repair_trace, repair_calls = await self._run_repair(
                     run,
-                    owner,
+                    lease_owner,
                     snapshot,
                     candidate_payload,
                     validation_report,
@@ -431,7 +436,7 @@ class OrchestrationService:
                 current = await uow.runs.get_for_update(run_id)
                 if current is None:
                     raise ValidationFailure("RUN_NOT_FOUND", "任务不存在。")
-                current.require_active_writer(token, owner)
+                current.require_active_writer(token, lease_owner)
                 # The in-memory ledger accumulated every reservation and settlement;
                 # the freshly loaded row only has the counters from before this run.
                 current.budget.calls_reserved = run.budget.calls_reserved
@@ -515,9 +520,20 @@ class OrchestrationService:
                 await heartbeat
 
         if error_code is not None:
+            # Calls already spent must remain traceable even though the run
+            # failed: cost accounting cannot depend on the stage succeeding.
+            await self._record_calls(run_id, calls)
             async with self._uow() as uow:
                 current = await uow.runs.get_for_update(run_id)
-                if current is not None and current.status not in (RunStatus.SUCCEEDED, RunStatus.CANCELLED):
+                # Only the worker that still holds the lease may record the
+                # failure. A stale worker finishing late must not kill a run that
+                # a newer owner is legitimately executing.
+                if (
+                    current is not None
+                    and current.status is RunStatus.RUNNING
+                    and current.fencing_token == token
+                    and current.lease_owner == lease_owner
+                ):
                     current.status = RunStatus.FAILED
                     current.error_code = error_code
                     current.finished_at = _now()
