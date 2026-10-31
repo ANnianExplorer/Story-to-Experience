@@ -85,11 +85,11 @@
       "implementation_paths": [
         "server/domain/project.py",
         "server/application/projects.py",
-        "server/infrastructure/db/tables.py",
         "apps/api/xujing_api/main.py"
       ],
       "evidence": [
-        "docs/quality/reports/2026-10-31-backend-slice-1.md"
+        "docs/quality/reports/2026-10-31-backend-slice-1.md",
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
       ]
     },
     {
@@ -106,7 +106,7 @@
         "F01"
       ],
       "design_status": "baseline",
-      "implementation_status": "planned",
+      "implementation_status": "in_progress",
       "requirements": [
         "F02-R01",
         "F02-R02",
@@ -161,8 +161,14 @@
           ]
         }
       ],
-      "implementation_paths": [],
-      "evidence": []
+      "implementation_paths": [
+        "server/application/evidence.py",
+        "server/infrastructure/parsing/documents.py",
+        "server/infrastructure/blobs.py"
+      ],
+      "evidence": [
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+      ]
     },
     {
       "id": "F03",
@@ -184,7 +190,7 @@
         "F10"
       ],
       "design_status": "baseline",
-      "implementation_status": "planned",
+      "implementation_status": "in_progress",
       "requirements": [
         "F03-R01",
         "F03-R02",
@@ -238,8 +244,14 @@
           ]
         }
       ],
-      "implementation_paths": [],
-      "evidence": []
+      "implementation_paths": [
+        "server/application/orchestration.py",
+        "server/application/builder_template.py",
+        "server/application/spec_validation.py"
+      ],
+      "evidence": [
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+      ]
     },
     {
       "id": "F04",
@@ -254,7 +266,7 @@
       ],
       "dependencies": [],
       "design_status": "baseline",
-      "implementation_status": "planned",
+      "implementation_status": "in_progress",
       "requirements": [
         "F04-R01",
         "F04-R02",
@@ -323,8 +335,13 @@
           ]
         }
       ],
-      "implementation_paths": [],
-      "evidence": []
+      "implementation_paths": [
+        "packages/engine/src/engine.ts",
+        "packages/contracts/generated/experience-spec.ts"
+      ],
+      "evidence": [
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+      ]
     },
     {
       "id": "F05",
@@ -344,7 +361,7 @@
         "F07"
       ],
       "design_status": "baseline",
-      "implementation_status": "planned",
+      "implementation_status": "in_progress",
       "requirements": [
         "F05-R01",
         "F05-R02",
@@ -398,8 +415,13 @@
           ]
         }
       ],
-      "implementation_paths": [],
-      "evidence": []
+      "implementation_paths": [
+        "packages/validator/src/validator.ts",
+        "server/infrastructure/validation/node_validator.py"
+      ],
+      "evidence": [
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+      ]
     },
     {
       "id": "F06",
@@ -416,7 +438,7 @@
         "F01"
       ],
       "design_status": "baseline",
-      "implementation_status": "planned",
+      "implementation_status": "in_progress",
       "requirements": [
         "F06-R01",
         "F06-R02",
@@ -471,8 +493,13 @@
           ]
         }
       ],
-      "implementation_paths": [],
-      "evidence": []
+      "implementation_paths": [
+        "server/application/runs.py",
+        "server/domain/run.py"
+      ],
+      "evidence": [
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+      ]
     },
     {
       "id": "F07",
@@ -490,7 +517,7 @@
         "F06"
       ],
       "design_status": "baseline",
-      "implementation_status": "planned",
+      "implementation_status": "in_progress",
       "requirements": [
         "F07-R01",
         "F07-R02",
@@ -546,8 +573,13 @@
           ]
         }
       ],
-      "implementation_paths": [],
-      "evidence": []
+      "implementation_paths": [
+        "server/domain/version.py",
+        "server/application/delivery.py"
+      ],
+      "evidence": [
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+      ]
     },
     {
       "id": "F08",
@@ -566,7 +598,7 @@
         "F07"
       ],
       "design_status": "baseline",
-      "implementation_status": "planned",
+      "implementation_status": "in_progress",
       "requirements": [
         "F08-R01",
         "F08-R02",
@@ -621,8 +653,13 @@
           ]
         }
       ],
-      "implementation_paths": [],
-      "evidence": []
+      "implementation_paths": [
+        "server/application/delivery.py",
+        "server/domain/delivery.py"
+      ],
+      "evidence": [
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+      ]
     },
     {
       "id": "F09",
@@ -718,7 +755,7 @@
         "F06"
       ],
       "design_status": "baseline",
-      "implementation_status": "planned",
+      "implementation_status": "in_progress",
       "requirements": [
         "F10-R01",
         "F10-R02",
@@ -776,8 +813,13 @@
           ]
         }
       ],
-      "implementation_paths": [],
-      "evidence": []
+      "implementation_paths": [
+        "server/application/orchestration.py",
+        "server/domain/agents.py"
+      ],
+      "evidence": [
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+      ]
     },
     {
       "id": "F11",
@@ -795,7 +837,7 @@
         "F10"
       ],
       "design_status": "baseline",
-      "implementation_status": "planned",
+      "implementation_status": "in_progress",
       "requirements": [
         "F11-R01",
         "F11-R02",
@@ -876,8 +918,14 @@
           ]
         }
       ],
-      "implementation_paths": [],
-      "evidence": []
+      "implementation_paths": [
+        "server/application/conversations.py",
+        "server/domain/conversation.py",
+        "server/application/retrieval.py"
+      ],
+      "evidence": [
+        "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
+      ]
     }
   ]
 }
