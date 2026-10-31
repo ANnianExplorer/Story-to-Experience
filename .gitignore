@@ -31,3 +31,6 @@ artifacts/private/
 
 # Vite library cache (per-app)
 apps/*/.vite/
+
+# Playwright CLI session output (transcripts, snapshots)
+.playwright-cli/
