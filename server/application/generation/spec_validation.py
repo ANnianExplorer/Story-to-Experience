@@ -11,9 +11,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from server.domain.errors import ValidationFailure
+from server.domain.shared.errors import ValidationFailure
 
-CONTRACTS_DIR = Path(__file__).resolve().parents[2] / "packages" / "contracts"
+# server/application/generation/<module>.py -> repository root is parents[3].
+CONTRACTS_DIR = Path(__file__).resolve().parents[3] / "packages" / "contracts"
 EXPERIENCE_SPEC_SCHEMA = CONTRACTS_DIR / "experience-spec.schema.json"
 DIALOGUE_PROFILE_SCHEMA = CONTRACTS_DIR / "dialogue-profile.schema.json"
 

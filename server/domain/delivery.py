@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from .errors import Conflict, ValidationFailure
+from .shared.errors import Conflict, ValidationFailure
 
 SHARE_TOKEN_BYTES = 32  # 256 bits of entropy
 ReviewDecision = Literal["approved", "needs_changes"]

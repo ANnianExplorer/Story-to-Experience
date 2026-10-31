@@ -17,10 +17,10 @@ from pathlib import Path
 import pytest
 
 from server.application.evidence import EvidenceService
-from server.application.orchestration import OrchestrationService
+from server.application.generation.orchestration import OrchestrationService
 from server.application.projects import ProjectService
 from server.application.runs import RunService
-from server.domain.project import Brief
+from server.domain.projects import Brief
 from server.infrastructure.llm.gateway import AnthropicGatewayProvider
 from server.infrastructure.validation.node_validator import NodeValidator
 
@@ -106,9 +106,9 @@ async def test_live_generation_uses_real_provider_calls(uow_factory, blob_store)
 @pytest.mark.simulated
 async def test_live_guide_conversation_cites_public_evidence(uow_factory, blob_store):
     """Real Guide turn over a real candidate: citation discipline with a live model."""
-    from server.application.conversations import ConversationService
+    from server.application.conversations.service import ConversationService
     from server.application.delivery import DeliveryService
-    from server.application.orchestration import OrchestrationService
+    from server.application.generation.orchestration import OrchestrationService
     from server.application.runs import RunService
 
     project = await ProjectService(uow_factory).create(

@@ -14,7 +14,7 @@ from server.domain.agents import (
     PlanTask,
     allowed_tools,
 )
-from server.domain.errors import Conflict, ValidationFailure
+from server.domain.shared.errors import Conflict, ValidationFailure
 
 
 def envelope(**overrides: object) -> AgentTaskEnvelope:

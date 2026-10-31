@@ -83,8 +83,9 @@
         }
       ],
       "implementation_paths": [
-        "server/domain/project.py",
+        "server/domain/projects.py",
         "server/application/projects.py",
+        "apps/api/xujing_api/routers/projects.py",
         "apps/api/xujing_api/main.py"
       ],
       "evidence": [
@@ -164,7 +165,7 @@
       "implementation_paths": [
         "server/application/evidence.py",
         "server/infrastructure/parsing/documents.py",
-        "server/infrastructure/blobs.py"
+        "server/infrastructure/storage/blobs.py"
       ],
       "evidence": [
         "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
@@ -245,9 +246,9 @@
         }
       ],
       "implementation_paths": [
-        "server/application/orchestration.py",
-        "server/application/builder_template.py",
-        "server/application/spec_validation.py"
+        "server/application/generation/orchestration.py",
+        "server/application/generation/builder.py",
+        "server/application/generation/spec_validation.py"
       ],
       "evidence": [
         "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
@@ -495,7 +496,7 @@
       ],
       "implementation_paths": [
         "server/application/runs.py",
-        "server/domain/run.py"
+        "server/domain/runs.py"
       ],
       "evidence": [
         "docs/quality/reports/2026-10-31-backend-slice-2-4.md"
@@ -574,7 +575,7 @@
         }
       ],
       "implementation_paths": [
-        "server/domain/version.py",
+        "server/domain/versions.py",
         "server/application/delivery.py"
       ],
       "evidence": [
@@ -814,7 +815,7 @@
         }
       ],
       "implementation_paths": [
-        "server/application/orchestration.py",
+        "server/application/generation/orchestration.py",
         "server/domain/agents.py"
       ],
       "evidence": [
@@ -919,9 +920,9 @@
         }
       ],
       "implementation_paths": [
-        "server/application/conversations.py",
-        "server/domain/conversation.py",
-        "server/application/retrieval.py"
+        "server/application/conversations/service.py",
+        "server/domain/conversations.py",
+        "server/application/conversations/retrieval.py"
       ],
       "evidence": [
         "docs/quality/reports/2026-10-31-backend-slice-2-4.md"

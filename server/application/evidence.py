@@ -10,8 +10,8 @@ from datetime import datetime, timezone
 from typing import Callable
 
 from server.application.ports import BlobStore, ScopeFactory
-from server.domain.canonical_json import canonical_sha256
-from server.domain.errors import Conflict, NotFound, ValidationFailure
+from server.domain.shared.canonical_json import canonical_sha256
+from server.domain.shared.errors import Conflict, NotFound, ValidationFailure
 from server.domain.evidence import (
     Claim,
     SourceDocument,
@@ -21,8 +21,8 @@ from server.domain.evidence import (
     SnapshotManifestEntry,
     validate_content_type,
 )
-from server.domain.ids import new_id
-from server.domain.text import paragraph_spans, sha256_bytes, sha256_text, slice_span
+from server.domain.shared.ids import new_id
+from server.domain.shared.text import paragraph_spans, sha256_bytes, sha256_text, slice_span
 from server.infrastructure.parsing.documents import parse_source
 
 

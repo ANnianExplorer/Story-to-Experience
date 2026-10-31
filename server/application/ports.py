@@ -10,8 +10,8 @@ from typing import Any, AsyncIterator, Protocol, Sequence
 
 from server.domain.agents import AgentResult, AgentTaskEnvelope, Plan
 from server.domain.evidence import Claim, SourceDocument, SourceSnapshot, SourceSpan
-from server.domain.project import Brief, BriefRevision, Project
-from server.domain.run import BudgetLedger, ModelCall, Run
+from server.domain.projects import Brief, BriefRevision, Project
+from server.domain.runs import BudgetLedger, ModelCall, Run
 
 
 class ProjectRepository(Protocol):

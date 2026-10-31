@@ -9,6 +9,9 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parents[4]
 
 
 class ConfigurationError(RuntimeError):
@@ -62,7 +65,7 @@ def get_settings() -> Settings:
         bind_host=os.environ.get("XUJING_BIND_HOST", "127.0.0.1"),
         bind_port=int(os.environ.get("XUJING_BIND_PORT", "8000")),
         identity_mode=os.environ.get("XUJING_IDENTITY_MODE", "dev"),
-        storage_root=os.environ.get("XUJING_STORAGE_ROOT", "var/blobs"),
+        storage_root=os.environ.get("XUJING_STORAGE_ROOT", str(REPO_ROOT / "var" / "blobs")),
         model_provider=os.environ.get("XUJING_MODEL_PROVIDER", "anthropic-gateway"),
         model_base_url=os.environ.get("XUJING_MODEL_BASE_URL") or os.environ.get("ANTHROPIC_BASE_URL"),
         model_api_key=os.environ.get("XUJING_MODEL_API_KEY") or os.environ.get("ANTHROPIC_AUTH_TOKEN"),

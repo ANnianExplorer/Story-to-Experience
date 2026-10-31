@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal
 
-from .errors import Conflict, ValidationFailure
+from .shared.errors import Conflict, ValidationFailure
 
 TechnicalStatus = Literal["not_run", "passed", "failed", "inconclusive"]
 ContentStatus = Literal["pending", "approved", "needs_changes"]

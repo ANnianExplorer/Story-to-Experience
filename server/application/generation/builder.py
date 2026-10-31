@@ -17,7 +17,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from server.domain.errors import ValidationFailure
+from server.domain.shared.errors import ValidationFailure
 
 SOURCE_CLAIM_NAMESPACE = uuid.UUID("6f9619ff-8b86-d011-b42d-00c04fc964ff")
 MAX_OPTIONS = 6

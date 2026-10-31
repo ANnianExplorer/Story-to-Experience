@@ -4,8 +4,8 @@ from datetime import timedelta
 
 import pytest
 
-from server.domain.errors import Conflict, ValidationFailure
-from server.domain.run import (
+from server.domain.shared.errors import Conflict, ValidationFailure
+from server.domain.runs import (
     BudgetLedger,
     CostStatus,
     ModelCall,

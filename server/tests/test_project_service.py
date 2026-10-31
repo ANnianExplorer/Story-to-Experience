@@ -3,8 +3,8 @@ from __future__ import annotations
 import pytest
 
 from server.application.projects import ProjectService
-from server.domain.errors import Conflict, NotFound, ValidationFailure
-from server.domain.project import Brief
+from server.domain.shared.errors import Conflict, NotFound, ValidationFailure
+from server.domain.projects import Brief
 
 ALICE = "11111111-1111-4111-8111-111111111111"
 BOB = "22222222-2222-4222-8222-222222222222"

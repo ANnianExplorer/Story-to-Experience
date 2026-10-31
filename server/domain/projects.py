@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from .errors import NotFound, ValidationFailure
+from .shared.errors import NotFound, ValidationFailure
 
 MAX_NAME_LENGTH = 120
 MAX_AUDIENCE_LENGTH = 120

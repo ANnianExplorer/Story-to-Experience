@@ -54,7 +54,7 @@ def node_validator():
 
 @pytest.fixture
 def blob_store(tmp_path):
-    from server.infrastructure.blobs import LocalBlobStore
+    from server.infrastructure.storage.blobs import LocalBlobStore
 
     return LocalBlobStore(str(tmp_path / "blobs"))
 

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import pytest
 
-from server.domain.canonical_json import canonical_json, canonical_sha256
-from server.domain.errors import ValidationFailure
+from server.domain.shared.canonical_json import canonical_json, canonical_sha256
+from server.domain.shared.errors import ValidationFailure
 
 EMOJI = "\U0001F600"  # U+1F600, UTF-16 surrogate pair D83D DE00
 FULLWIDTH_BANG = "！"  # U+FF01, single UTF-16 code unit

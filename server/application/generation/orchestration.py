@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
-from server.application.agent_roles import (
+from server.application.generation.roles import (
     CONDITION_RULES,
     SPEC_EXAMPLE,
     BLUEPRINT_SCHEMA,
@@ -32,9 +32,9 @@ from server.application.agent_roles import (
     validate_payload,
 )
 from server.application.ports import ModelProvider, ScopeFactory, ValidatorPort
-from server.application.builder_template import build_draft_spec
-from server.application.spec_skeleton import experience_spec_skeleton
-from server.application.spec_validation import validate_dialogue_profile, validate_experience_spec
+from server.application.generation.builder import build_draft_spec
+from server.application.generation.spec_skeleton import experience_spec_skeleton
+from server.application.generation.spec_validation import validate_dialogue_profile, validate_experience_spec
 from server.domain.agents import (
     AGENT_PROTOCOL_VERSION,
     PROFILES,
@@ -44,12 +44,12 @@ from server.domain.agents import (
     PlanTask,
     TOOL_MATRIX,
 )
-from server.domain.canonical_json import canonical_sha256
-from server.domain.conversation import DialogueProfile
-from server.domain.errors import Conflict, DomainError, NotConfigured, ValidationFailure
+from server.domain.shared.canonical_json import canonical_sha256
+from server.domain.conversations import DialogueProfile
+from server.domain.shared.errors import Conflict, DomainError, NotConfigured, ValidationFailure
 from server.domain.evidence import Claim, SourceSnapshot
-from server.domain.ids import new_id
-from server.domain.run import CostStatus, ModelCall, Run, RunStatus, Stage, utcnow
+from server.domain.shared.ids import new_id
+from server.domain.runs import CostStatus, ModelCall, Run, RunStatus, Stage, utcnow
 
 
 def _now() -> datetime:
@@ -1202,7 +1202,7 @@ def semantic_projection(spec: dict[str, Any]) -> dict[str, Any]:
 
 def apply_patch(spec: dict[str, Any], patches: list[dict[str, Any]]) -> dict[str, Any]:
     """Apply whitelisted ``replace`` operations by parsed JSON Pointer segments."""
-    from server.domain.version import check_patch_path
+    from server.domain.versions import check_patch_path
 
     patched = json.loads(json.dumps(spec))
     for patch in patches:

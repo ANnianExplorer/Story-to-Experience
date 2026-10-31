@@ -12,8 +12,8 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any, Literal
 
-from .canonical_json import canonical_sha256
-from .errors import Conflict, ValidationFailure
+from .shared.canonical_json import canonical_sha256
+from .shared.errors import Conflict, ValidationFailure
 
 AGENT_PROTOCOL_VERSION = "1.0.0"
 MAX_PLAN_TASKS = 24

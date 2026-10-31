@@ -7,8 +7,8 @@ from __future__ import annotations
 
 import pytest
 
-from server.application.agent_roles import SPEC_EXAMPLE, validate_payload, CANDIDATE_SCHEMA
-from server.application.spec_validation import validate_experience_spec
+from server.application.generation.roles import SPEC_EXAMPLE, validate_payload, CANDIDATE_SCHEMA
+from server.application.generation.spec_validation import validate_experience_spec
 
 
 def test_prompt_example_is_schema_valid() -> None:
@@ -16,7 +16,7 @@ def test_prompt_example_is_schema_valid() -> None:
 
 
 def test_prompt_example_rejects_unknown_fields() -> None:
-    from server.domain.errors import ValidationFailure
+    from server.domain.shared.errors import ValidationFailure
 
     broken = {**SPEC_EXAMPLE, "unexpected": 1}
     with pytest.raises(ValidationFailure) as error:

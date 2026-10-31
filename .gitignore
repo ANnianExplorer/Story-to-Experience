@@ -28,3 +28,6 @@ var/
 playwright-report/
 test-results/
 artifacts/private/
+
+# Vite library cache (per-app)
+apps/*/.vite/

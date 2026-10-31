@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 from fastapi import Request
 
-from server.domain.errors import Unauthorized
+from server.domain.shared.errors import Unauthorized
 
 DEV_HEADER = "x-actor-id"
 DEFAULT_DEV_ACTOR = "00000000-0000-4000-8000-000000000001"

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Any, AsyncIterator
 
-from server.domain.run import BudgetLedger, CostStatus
+from server.domain.runs import BudgetLedger, CostStatus
 from server.infrastructure.llm.gateway import ProviderUsage
 
 

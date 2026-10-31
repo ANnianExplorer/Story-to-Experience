@@ -8,9 +8,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from server.application.ports import ScopeFactory
-from server.domain.errors import Conflict, ValidationFailure
-from server.domain.ids import new_id
-from server.domain.project import Brief, BriefRevision, Project
+from server.domain.shared.errors import Conflict, ValidationFailure
+from server.domain.shared.ids import new_id
+from server.domain.projects import Brief, BriefRevision, Project
 
 
 def _now() -> datetime:
@@ -42,7 +42,7 @@ class ProjectService:
         async with self._uow() as uow:
             project = await uow.projects.get(project_id)
         if project is None:
-            from server.domain.errors import NotFound
+            from server.domain.shared.errors import NotFound
 
             raise NotFound(object_id=project_id)
         project.assert_owned_by(actor_id)
@@ -58,7 +58,7 @@ class ProjectService:
         async with self._uow() as uow:
             project = await uow.projects.get(project_id)
             if project is None:
-                from server.domain.errors import NotFound
+                from server.domain.shared.errors import NotFound
 
                 raise NotFound(object_id=project_id)
             project.assert_owned_by(actor_id)
@@ -90,7 +90,7 @@ class ProjectService:
         async with self._uow() as uow:
             project = await uow.projects.get(project_id)
             if project is None:
-                from server.domain.errors import NotFound
+                from server.domain.shared.errors import NotFound
 
                 raise NotFound(object_id=project_id)
             project.assert_owned_by(actor_id)

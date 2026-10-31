@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
 
-from .errors import Conflict, ValidationFailure
+from .shared.errors import Conflict, ValidationFailure
 
 ContentType = Literal["supported", "legend", "adaptation", "unconfirmed"]
 CONTENT_TYPES: frozenset[str] = frozenset({"supported", "legend", "adaptation", "unconfirmed"})

@@ -4,8 +4,8 @@ import unicodedata
 
 import pytest
 
-from server.domain.errors import ValidationFailure
-from server.domain.text import (
+from server.domain.shared.errors import ValidationFailure
+from server.domain.shared.text import (
     normalize_text,
     paragraph_spans,
     sha256_text,

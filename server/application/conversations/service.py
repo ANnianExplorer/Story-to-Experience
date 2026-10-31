@@ -22,9 +22,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from server.application.ports import ModelProvider, ScopeFactory
-from server.application.retrieval import retrieve
-from server.domain.canonical_json import canonical_sha256
-from server.domain.conversation import (
+from server.application.conversations.retrieval import retrieve
+from server.domain.shared.canonical_json import canonical_sha256
+from server.domain.conversations import (
     CONVERSATION_PROTOCOL_VERSION,
     Answerability,
     Citation,
@@ -36,9 +36,9 @@ from server.domain.conversation import (
     SuggestedAction,
     TurnStatus,
 )
-from server.domain.errors import Conflict, NotFound, ValidationFailure
-from server.domain.ids import new_id
-from server.domain.run import BudgetLedger, CostStatus
+from server.domain.shared.errors import Conflict, NotFound, ValidationFailure
+from server.domain.shared.ids import new_id
+from server.domain.runs import BudgetLedger, CostStatus
 
 GUIDE_SYSTEM = """你是文化体验中的 AI 导览（或改编角色）。硬性约束：
 - 只能使用给定版本、当前场景、已获线索和“公开证据片段”中的内容回答。

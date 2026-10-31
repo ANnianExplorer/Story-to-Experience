@@ -9,8 +9,8 @@ from __future__ import annotations
 import io
 from dataclasses import dataclass
 
-from server.domain.errors import UnsupportedMedia, ValidationFailure
-from server.domain.text import normalize_text
+from server.domain.shared.errors import UnsupportedMedia, ValidationFailure
+from server.domain.shared.text import normalize_text
 
 PDF_MAGIC = b"%PDF-"
 MAX_TEXT_BYTES = 2 * 1024 * 1024

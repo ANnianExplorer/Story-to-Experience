@@ -12,10 +12,10 @@ import json
 import pytest
 
 from server.application.evidence import EvidenceService
-from server.application.orchestration import OrchestrationService
+from server.application.generation.orchestration import OrchestrationService
 from server.application.projects import ProjectService
 from server.application.runs import RunService
-from server.domain.project import Brief
+from server.domain.projects import Brief
 from server.tests import scripted_agents as script
 
 ALICE = "11111111-1111-4111-8111-111111111111"
@@ -303,7 +303,7 @@ async def test_repair_cannot_touch_protected_paths(uow_factory, blob_store, node
 
 @pytest.mark.simulated
 async def test_budget_exhaustion_is_reported_not_faked(uow_factory, blob_store, node_validator):
-    from server.domain.run import BudgetLedger
+    from server.domain.runs import BudgetLedger
     from server.tests.providers import ScriptedProvider
 
     class TightProvider(ScriptedProvider):
@@ -317,7 +317,7 @@ async def test_budget_exhaustion_is_reported_not_faked(uow_factory, blob_store, 
     async def limited_complete(**kwargs):  # type: ignore[no-untyped-def]
         budget = kwargs["budget"]
         if budget.calls_settled >= 1:
-            from server.domain.errors import Conflict
+            from server.domain.shared.errors import Conflict
 
             raise Conflict("BUDGET_EXHAUSTED", "预算耗尽（模拟）。")
         return await original_complete(**kwargs)

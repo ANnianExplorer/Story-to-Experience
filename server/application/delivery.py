@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from server.application.ports import ScopeFactory
-from server.domain.canonical_json import canonical_sha256
+from server.domain.shared.canonical_json import canonical_sha256
 from server.domain.delivery import (
     ContentReview,
     Share,
@@ -12,9 +12,9 @@ from server.domain.delivery import (
     issue_share_token,
     verify_share_token,
 )
-from server.domain.errors import Conflict, NotFound, ValidationFailure
-from server.domain.ids import new_id
-from server.domain.version import assert_can_go_stable
+from server.domain.shared.errors import Conflict, NotFound, ValidationFailure
+from server.domain.shared.ids import new_id
+from server.domain.versions import assert_can_go_stable
 
 DEFAULT_SHARE_HOURS = 72
 

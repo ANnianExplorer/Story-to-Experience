@@ -6,10 +6,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from server.application.ports import ScopeFactory
-from server.domain.canonical_json import canonical_sha256
-from server.domain.errors import Conflict, NotFound, ValidationFailure
-from server.domain.ids import new_id
-from server.domain.run import Run, RunStatus, Stage, utcnow
+from server.domain.shared.canonical_json import canonical_sha256
+from server.domain.shared.errors import Conflict, NotFound, ValidationFailure
+from server.domain.shared.ids import new_id
+from server.domain.runs import Run, RunStatus, Stage, utcnow
 
 GENERATION_BUDGET_CALLS = 12
 

@@ -13,7 +13,7 @@ import shutil
 from pathlib import Path
 from typing import Any, Sequence
 
-from server.domain.errors import ValidationFailure
+from server.domain.shared.errors import ValidationFailure
 
 VALIDATOR_PROTOCOL = "1.0.0"
 DEFAULT_TIMEOUT_SECONDS = 90

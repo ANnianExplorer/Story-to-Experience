@@ -13,7 +13,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-CONTRACTS_DIR = Path(__file__).resolve().parents[2] / "packages" / "contracts"
+# server/application/generation/<module>.py -> repository root is parents[3].
+CONTRACTS_DIR = Path(__file__).resolve().parents[3] / "packages" / "contracts"
 EXPERIENCE_SPEC_SCHEMA = CONTRACTS_DIR / "experience-spec.schema.json"
 
 _SKIP_KEYS = {"$schema", "$id", "title", "description", "format", "if", "then", "else", "allOf"}

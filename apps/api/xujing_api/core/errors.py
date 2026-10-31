@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
-from server.domain.errors import DomainError
+from server.domain.shared.errors import DomainError
 
 
 def request_id_of(request: Request) -> str:

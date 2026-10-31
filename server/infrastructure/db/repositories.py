@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.domain.agents import AgentResult, AgentTaskEnvelope, Plan
-from server.domain.conversation import ConversationSession, ConversationTurn, TurnStatus
+from server.domain.conversations import ConversationSession, ConversationTurn, TurnStatus
 from server.domain.evidence import (
     Claim,
     SourceDocument,
@@ -19,8 +19,8 @@ from server.domain.evidence import (
     SnapshotManifest,
     SnapshotManifestEntry,
 )
-from server.domain.project import Brief, BriefRevision, Project
-from server.domain.run import BudgetLedger, CostStatus, ModelCall, Run, RunStatus, Stage
+from server.domain.projects import Brief, BriefRevision, Project
+from server.domain.runs import BudgetLedger, CostStatus, ModelCall, Run, RunStatus, Stage
 from server.infrastructure.db.tables import (
     AgentArtifactRow,
     AgentPlanRow,
@@ -135,7 +135,7 @@ class ProjectRepository:
     async def save(self, project: Project) -> Project:
         row = await self._session.get(ProjectRow, project.id)
         if row is None:
-            from server.domain.errors import NotFound
+            from server.domain.shared.errors import NotFound
 
             raise NotFound(object_id=project.id)
         row.name = project.name
@@ -230,7 +230,7 @@ class EvidenceRepository:
     async def save_document(self, document: SourceDocument) -> SourceDocument:
         row = await self._session.get(SourceDocumentRow, document.id)
         if row is None:
-            from server.domain.errors import NotFound
+            from server.domain.shared.errors import NotFound
 
             raise NotFound(object_id=document.id)
         row.parse_status = document.parse_status
@@ -475,7 +475,7 @@ class RunRepository:
     async def save(self, run: Run) -> Run:
         row = await self._session.get(RunRow, run.id)
         if row is None:
-            from server.domain.errors import NotFound
+            from server.domain.shared.errors import NotFound
 
             raise NotFound(object_id=run.id)
         row.status = run.status.value
@@ -521,7 +521,7 @@ class RunRepository:
         )
         sequence = (await self._session.execute(allocate)).scalar_one_or_none()
         if sequence is None:
-            from server.domain.errors import NotFound
+            from server.domain.shared.errors import NotFound
 
             raise NotFound(object_id=run_id)
         self._session.add(
@@ -648,7 +648,7 @@ class AgentRepository:
     async def mark_running(self, task_id: str) -> None:
         row = await self._session.get(AgentTaskRow, task_id)
         if row is None:
-            from server.domain.errors import NotFound
+            from server.domain.shared.errors import NotFound
 
             raise NotFound(object_id=task_id)
         row.status = "running"
@@ -658,7 +658,7 @@ class AgentRepository:
     async def save_result(self, run_id: str, result: AgentResult, artifact: dict[str, Any] | None) -> None:
         row = await self._session.get(AgentTaskRow, result.task_id)
         if row is None:
-            from server.domain.errors import NotFound
+            from server.domain.shared.errors import NotFound
 
             raise NotFound(object_id=result.task_id)
         row.status = result.status.value
@@ -674,7 +674,7 @@ class AgentRepository:
         }
         row.updated_at = _now()
         if artifact is not None and result.artifact_refs:
-            from server.domain.canonical_json import canonical_sha256
+            from server.domain.shared.canonical_json import canonical_sha256
 
             artifact_id = result.artifact_refs[0]
             self._session.add(
@@ -824,7 +824,7 @@ class ConversationRepository:
         row = await self._session.get(ConversationSessionRow, session_id)
         if row is None:
             return None
-        from server.domain.conversation import SessionKind
+        from server.domain.conversations import SessionKind
 
         return ConversationSession(
             id=row.id,
@@ -904,7 +904,7 @@ class ConversationRepository:
     async def save_turn(self, turn: ConversationTurn) -> None:
         row = await self._session.get(ConversationTurnRow, turn.id)
         if row is None:
-            from server.domain.errors import NotFound
+            from server.domain.shared.errors import NotFound
 
             raise NotFound(object_id=turn.id)
         row.status = turn.status.value
@@ -944,7 +944,7 @@ class ConversationRepository:
 
     @staticmethod
     def _turn(row: ConversationTurnRow) -> ConversationTurn:
-        from server.domain.conversation import Answerability, Citation, SuggestedAction
+        from server.domain.conversations import Answerability, Citation, SuggestedAction
 
         return ConversationTurn(
             id=row.id,

@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from enum import StrEnum
 
-from .errors import Conflict, ValidationFailure
+from .shared.errors import Conflict, ValidationFailure
 
 DEFAULT_LEASE_SECONDS = 30
 MAX_MODEL_CALLS = 12

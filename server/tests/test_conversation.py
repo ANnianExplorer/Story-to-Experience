@@ -11,15 +11,15 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from server.application.conversations import ConversationService
+from server.application.conversations.service import ConversationService
 from server.application.delivery import DeliveryService
-from server.application.orchestration import OrchestrationService
+from server.application.generation.orchestration import OrchestrationService
 from server.application.projects import ProjectService
 from server.application.runs import RunService
-from server.domain.conversation import Answerability, ConversationBudget, DialogueProfile, SessionKind, TurnStatus
-from server.domain.errors import Conflict, NotFound, ValidationFailure
-from server.domain.project import Brief
-from server.domain.run import BudgetLedger, CostStatus
+from server.domain.conversations import Answerability, ConversationBudget, DialogueProfile, SessionKind, TurnStatus
+from server.domain.shared.errors import Conflict, NotFound, ValidationFailure
+from server.domain.projects import Brief
+from server.domain.runs import BudgetLedger, CostStatus
 from server.infrastructure.llm.gateway import ProviderUsage
 from server.tests import scripted_agents as script
 from server.tests.test_orchestration import ALICE, seed_project

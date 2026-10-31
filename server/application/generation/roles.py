@@ -13,7 +13,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from server.domain.agents import AgentRole
-from server.domain.errors import ValidationFailure
+from server.domain.shared.errors import ValidationFailure
 
 PROMPT_VERSION = "1.0.0"
 
