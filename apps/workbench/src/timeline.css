@@ -121,6 +121,12 @@
   color: var(--xj-color-muted);
 }
 
+/* 未触发的步骤（如首轮通过时的修复）用空心虚线节点，区别于"等待中" */
+.timeline-not_needed .timeline-node {
+  border-style: dashed;
+  background: transparent;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .timeline-running .timeline-node {
     animation: none;

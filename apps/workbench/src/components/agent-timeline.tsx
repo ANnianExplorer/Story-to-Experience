@@ -22,6 +22,16 @@ const ROLE_LABEL: Record<string, string> = {
 
 const ROLE_ORDER = ['coordinator', 'evidence', 'experience_designer', 'experience_builder', 'review', 'repair'];
 
+const STATUS_LABEL: Record<string, string> = {
+  succeeded: '已完成',
+  failed: '失败',
+  running: '执行中',
+  waiting: '等待中',
+  pending: '未开始',
+  not_needed: '未触发',
+  cancelled: '已取消',
+};
+
 function toneFor(status: string): 'neutral' | 'ok' | 'warn' | 'bad' {
   if (status === 'succeeded') return 'ok';
   if (status === 'failed') return 'bad';
@@ -38,6 +48,8 @@ export interface AgentTimelineProps {
 export function AgentTimeline({ run, tasks, planNotes }: AgentTimelineProps) {
   const byRole = new Map<string, AgentTaskView>();
   for (const task of tasks) byRole.set(task.role, task);
+  const runSucceeded = run?.status === 'succeeded';
+  const runTerminal = run?.status === 'succeeded' || run?.status === 'failed' || run?.status === 'cancelled';
 
   const ordered = [
     ...ROLE_ORDER.filter((role) => byRole.has(role) || run !== null),
@@ -66,14 +78,29 @@ export function AgentTimeline({ run, tasks, planNotes }: AgentTimelineProps) {
       <ol className="timeline-list">
         {unique.map((role) => {
           const task = byRole.get(role);
-          const status = task?.status ?? (run && run.status !== 'succeeded' ? 'waiting' : 'pending');
+          // The Coordinator is recorded in `agent_plans`, not as a task row, so a
+          // successful run with a plan means it ran. Repair only runs when the
+          // first validation fails, so "not needed" must not look like "pending".
+          let derived = 'pending';
+          if (task) {
+            derived = task.status;
+          } else if (role === 'coordinator') {
+            derived = planNotes !== null || runSucceeded ? 'succeeded' : runTerminal ? 'failed' : 'waiting';
+          } else if (role === 'repair') {
+            derived = runTerminal ? 'not_needed' : 'pending';
+          } else if (runTerminal) {
+            derived = runSucceeded ? 'succeeded' : 'failed';
+          } else if (run) {
+            derived = 'waiting';
+          }
+          const status = derived;
           return (
             <li key={role} className={`timeline-step timeline-${status}`}>
               <span className="timeline-node" aria-hidden="true" />
               <div className="timeline-body">
                 <div className="timeline-head">
                   <strong>{ROLE_LABEL[role] ?? role}</strong>
-                  <StatusPill tone={toneFor(status)}>{status}</StatusPill>
+                  <StatusPill tone={toneFor(status)}>{STATUS_LABEL[status] ?? status}</StatusPill>
                 </div>
                 {task ? (
                   <>
@@ -88,7 +115,9 @@ export function AgentTimeline({ run, tasks, planNotes }: AgentTimelineProps) {
                     )}
                   </>
                 ) : (
-                  <p className="meta">等待前序子任务</p>
+                  <p className="meta">
+                    {status === 'not_needed' ? '首轮校验通过，无需修复' : status === 'waiting' ? '等待前序子任务' : '未开始'}
+                  </p>
                 )}
               </div>
             </li>
