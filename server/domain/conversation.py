@@ -204,8 +204,15 @@ class ConversationSession:
     def require_active(self, now: datetime | None = None) -> None:
         if self.status != "active":
             raise Conflict("SESSION_INACTIVE", "会话已失效。", object_id=self.id)
-        if self.expires_at is not None and now is not None and self.expires_at <= now:
-            raise Conflict("SESSION_EXPIRED", "会话已过期。", object_id=self.id)
+        if self.expires_at is not None and now is not None:
+            expires = self.expires_at
+            if expires.tzinfo is None:
+                # SQLite drops tzinfo; stored timestamps are always UTC.
+                from datetime import timezone
+
+                expires = expires.replace(tzinfo=timezone.utc)
+            if expires <= now:
+                raise Conflict("SESSION_EXPIRED", "会话已过期。", object_id=self.id)
 
 
 @dataclass(slots=True)

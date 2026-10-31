@@ -46,6 +46,13 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _aware(value: datetime | None) -> datetime | None:
+    """SQLite drops tzinfo; all stored timestamps are UTC, so re-attach it."""
+    if value is None:
+        return None
+    return value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+
+
 def _encode_cursor(created_at: datetime, row_id: str) -> str:
     raw = f"{created_at.isoformat()}|{row_id}".encode("utf-8")
     return base64.urlsafe_b64encode(raw).decode("ascii")
@@ -414,7 +421,7 @@ class RunRepository:
             base_version_id=row.base_version_id,
             attempt=row.attempt,
             lease_owner=row.lease_owner,
-            lease_expires_at=row.lease_expires_at,
+            lease_expires_at=_aware(row.lease_expires_at),
             fencing_token=row.fencing_token,
             last_sequence=row.last_sequence,
             budget=BudgetLedger(
@@ -423,8 +430,8 @@ class RunRepository:
                 repair_rounds=counters.get("repair_rounds", 0),
             ),
             error_code=row.error_code,
-            created_at=row.created_at,
-            finished_at=row.finished_at,
+            created_at=_aware(row.created_at),
+            finished_at=_aware(row.finished_at),
         )
 
     async def create(self, run: Run) -> Run:
@@ -477,7 +484,8 @@ class RunRepository:
         row.lease_owner = run.lease_owner
         row.lease_expires_at = run.lease_expires_at
         row.fencing_token = run.fencing_token
-        row.last_sequence = run.last_sequence
+        # ``last_sequence`` is owned by append_event's atomic allocation; writing
+        # it back from a stale domain copy would rewind the counter.
         row.counters = {
             "calls_reserved": run.budget.calls_reserved,
             "calls_settled": run.budget.calls_settled,
@@ -502,19 +510,25 @@ class RunRepository:
         return self._run(row) if row else None
 
     async def append_event(self, run_id: str, event_type: str, payload: dict[str, Any]) -> int:
-        stmt = select(RunRow).where(RunRow.id == run_id).with_for_update()
-        row = (await self._session.execute(stmt)).scalar_one_or_none()
-        if row is None:
+        # Allocate the sequence atomically in the database. Reading the row and
+        # adding one in Python would collide when two appends happen in the same
+        # transaction (identity map keeps the stale counter).
+        allocate = (
+            sa.update(RunRow)
+            .where(RunRow.id == run_id)
+            .values(last_sequence=RunRow.last_sequence + 1)
+            .returning(RunRow.last_sequence)
+        )
+        sequence = (await self._session.execute(allocate)).scalar_one_or_none()
+        if sequence is None:
             from server.domain.errors import NotFound
 
             raise NotFound(object_id=run_id)
-        sequence = row.last_sequence + 1
-        row.last_sequence = sequence
         self._session.add(
-            RunEventRow(run_id=run_id, sequence=sequence, type=event_type, payload=payload, created_at=_now())
+            RunEventRow(run_id=run_id, sequence=int(sequence), type=event_type, payload=payload, created_at=_now())
         )
         await self._session.flush()
-        return sequence
+        return int(sequence)
 
     async def events_since(self, run_id: str, after: int) -> list[dict[str, Any]]:
         stmt = (
@@ -810,9 +824,11 @@ class ConversationRepository:
         row = await self._session.get(ConversationSessionRow, session_id)
         if row is None:
             return None
+        from server.domain.conversation import SessionKind
+
         return ConversationSession(
             id=row.id,
-            kind=row.kind,  # type: ignore[arg-type]
+            kind=SessionKind(row.kind),
             actor_id=row.actor_id,
             project_id=row.project_id,
             version_id=row.version_id,
@@ -820,8 +836,8 @@ class ConversationRepository:
             share_id=row.share_id,
             context_hash=row.context_hash,
             status=row.status,  # type: ignore[arg-type]
-            expires_at=row.expires_at,
-            created_at=row.created_at,
+            expires_at=_aware(row.expires_at),
+            created_at=_aware(row.created_at),
         )
 
     async def session_profile(self, session_id: str) -> dict[str, Any] | None:
@@ -948,6 +964,298 @@ class ConversationRepository:
             cost_status=row.cost_status,
             cost_micros=row.cost_micros,
             error_code=row.error_code,
-            created_at=row.created_at,
-            finished_at=row.finished_at,
+            created_at=_aware(row.created_at),
+            finished_at=_aware(row.finished_at),
         )
+
+
+class IdempotencyRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def get(self, actor_id: str, scope: str, key: str) -> dict[str, Any] | None:
+        row = await self._session.get(IdempotencyRow, {"actor_id": actor_id, "scope": scope, "key": key})
+        if row is None:
+            return None
+        return {"request_hash": row.request_hash, "resource_id": row.resource_id, "response": row.response_json}
+
+    async def put(
+        self,
+        *,
+        actor_id: str,
+        scope: str,
+        key: str,
+        request_hash: str,
+        resource_id: str | None,
+        response: dict[str, Any],
+    ) -> None:
+        self._session.add(
+            IdempotencyRow(
+                actor_id=actor_id,
+                scope=scope,
+                key=key,
+                request_hash=request_hash,
+                resource_id=resource_id,
+                response_json=response,
+                created_at=_now(),
+            )
+        )
+        await self._session.flush()
+
+
+class SharesRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add(
+        self,
+        *,
+        share_id: str,
+        project_id: str,
+        version_id: str,
+        token_hash: str,
+        expires_at: datetime,
+        license_ack: bool = True,
+    ) -> None:
+        from server.infrastructure.db.tables import ShareRow
+
+        self._session.add(
+            ShareRow(
+                id=share_id,
+                project_id=project_id,
+                version_id=version_id,
+                token_hash=token_hash,
+                expires_at=expires_at,
+                license_ack=license_ack,
+                created_at=_now(),
+            )
+        )
+        await self._session.flush()
+
+    async def get(self, share_id: str) -> dict[str, Any] | None:
+        from server.infrastructure.db.tables import ShareRow
+
+        row = await self._session.get(ShareRow, share_id)
+        if row is None:
+            return None
+        return {
+            "id": row.id,
+            "project_id": row.project_id,
+            "version_id": row.version_id,
+            "token_hash": row.token_hash,
+            "expires_at": row.expires_at,
+            "revoked_at": row.revoked_at,
+            "license_ack": row.license_ack,
+        }
+
+    async def find_by_token_hash(self, token_hash: str) -> dict[str, Any] | None:
+        from server.infrastructure.db.tables import ShareRow
+
+        stmt = select(ShareRow).where(ShareRow.token_hash == token_hash)
+        row = (await self._session.execute(stmt)).scalar_one_or_none()
+        if row is None:
+            return None
+        return {
+            "id": row.id,
+            "project_id": row.project_id,
+            "version_id": row.version_id,
+            "token_hash": row.token_hash,
+            "expires_at": row.expires_at,
+            "revoked_at": row.revoked_at,
+            "license_ack": row.license_ack,
+        }
+
+    async def revoke(self, share_id: str) -> None:
+        from server.infrastructure.db.tables import ShareRow
+
+        row = await self._session.get(ShareRow, share_id)
+        if row is not None:
+            row.revoked_at = _now()
+            await self._session.flush()
+
+    async def project_for(self, share_id: str) -> str | None:
+        record = await self.get(share_id)
+        return None if record is None else str(record["project_id"])
+
+    async def list_for_project(self, project_id: str) -> list[dict[str, Any]]:
+        from server.infrastructure.db.tables import ShareRow
+
+        stmt = select(ShareRow).where(ShareRow.project_id == project_id).order_by(ShareRow.created_at.desc())
+        return [
+            {
+                "id": row.id,
+                "version_id": row.version_id,
+                "expires_at": row.expires_at,
+                "revoked_at": row.revoked_at,
+                "license_ack": row.license_ack,
+            }
+            for row in (await self._session.execute(stmt)).scalars()
+        ]
+
+
+class ReviewRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add(
+        self,
+        *,
+        review_id: str,
+        version_id: str,
+        project_id: str,
+        semantic_hash: str,
+        reviewer_id: str,
+        decision: str,
+        notes: str,
+        coverage_claim_ids: list[str],
+    ) -> None:
+        from server.infrastructure.db.tables import ContentReviewRow
+
+        self._session.add(
+            ContentReviewRow(
+                id=review_id,
+                version_id=version_id,
+                project_id=project_id,
+                semantic_hash=semantic_hash,
+                reviewer_id=reviewer_id,
+                decision=decision,
+                notes=notes,
+                coverage_claim_ids=coverage_claim_ids,
+                created_at=_now(),
+            )
+        )
+        await self._session.flush()
+
+    async def latest_for(self, version_id: str) -> dict[str, Any] | None:
+        from server.infrastructure.db.tables import ContentReviewRow
+
+        stmt = (
+            select(ContentReviewRow)
+            .where(ContentReviewRow.version_id == version_id)
+            .order_by(ContentReviewRow.created_at.desc())
+            .limit(1)
+        )
+        row = (await self._session.execute(stmt)).scalar_one_or_none()
+        if row is None:
+            return None
+        return {
+            "id": row.id,
+            "version_id": row.version_id,
+            "semantic_hash": row.semantic_hash,
+            "reviewer_id": row.reviewer_id,
+            "decision": row.decision,
+            "notes": row.notes,
+            "coverage_claim_ids": row.coverage_claim_ids,
+            "created_at": row.created_at,
+        }
+
+    async def add_report(
+        self,
+        *,
+        report_id: str,
+        version_id: str,
+        project_id: str,
+        spec_hash: str,
+        source_hash: str,
+        runtime_hash: str,
+        checker_version: str,
+        layer: str,
+        status: str,
+        evidence_manifest: dict[str, Any],
+    ) -> None:
+        from server.infrastructure.db.tables import ValidationReportRow
+
+        self._session.add(
+            ValidationReportRow(
+                id=report_id,
+                version_id=version_id,
+                project_id=project_id,
+                spec_hash=spec_hash,
+                source_hash=source_hash,
+                runtime_hash=runtime_hash,
+                checker_version=checker_version,
+                layer=layer,
+                status=status,
+                evidence_manifest=evidence_manifest,
+                created_at=_now(),
+            )
+        )
+        await self._session.flush()
+
+    async def reports_for(self, version_id: str) -> list[dict[str, Any]]:
+        from server.infrastructure.db.tables import ValidationReportRow
+
+        stmt = (
+            select(ValidationReportRow)
+            .where(ValidationReportRow.version_id == version_id)
+            .order_by(ValidationReportRow.created_at.desc())
+        )
+        return [
+            {
+                "id": row.id,
+                "version_id": row.version_id,
+                "spec_hash": row.spec_hash,
+                "checker_version": row.checker_version,
+                "layer": row.layer,
+                "status": row.status,
+                "evidence_manifest": row.evidence_manifest,
+                "created_at": row.created_at,
+            }
+            for row in (await self._session.execute(stmt)).scalars()
+        ]
+
+
+class ExperienceSessionRepository:
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
+
+    async def add(
+        self,
+        *,
+        session_id: str,
+        share_id: str,
+        version_id: str,
+        project_id: str,
+        token_hash: str,
+        expires_at: datetime,
+    ) -> None:
+        from server.infrastructure.db.tables import ExperienceSessionRow
+
+        self._session.add(
+            ExperienceSessionRow(
+                id=session_id,
+                share_id=share_id,
+                version_id=version_id,
+                project_id=project_id,
+                token_hash=token_hash,
+                status="active",
+                expires_at=expires_at,
+                created_at=_now(),
+            )
+        )
+        await self._session.flush()
+
+    async def get(self, session_id: str) -> dict[str, Any] | None:
+        from server.infrastructure.db.tables import ExperienceSessionRow
+
+        row = await self._session.get(ExperienceSessionRow, session_id)
+        if row is None:
+            return None
+        return {
+            "id": row.id,
+            "share_id": row.share_id,
+            "version_id": row.version_id,
+            "project_id": row.project_id,
+            "status": row.status,
+            "expires_at": _aware(row.expires_at),
+        }
+
+    async def revoke_for_share(self, share_id: str) -> int:
+        from server.infrastructure.db.tables import ExperienceSessionRow
+
+        stmt = select(ExperienceSessionRow).where(ExperienceSessionRow.share_id == share_id)
+        rows = list((await self._session.execute(stmt)).scalars())
+        for row in rows:
+            row.status = "revoked"
+        await self._session.flush()
+        return len(rows)

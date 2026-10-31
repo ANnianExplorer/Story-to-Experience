@@ -80,11 +80,32 @@ class AgentRepository(Protocol):
     async def tasks_for(self, run_id: str) -> list[dict[str, Any]]: ...
 
 
+class IdempotencyRepository(Protocol):
+    async def get(self, actor_id: str, scope: str, key: str) -> dict[str, Any] | None: ...
+
+    async def put(
+        self,
+        *,
+        actor_id: str,
+        scope: str,
+        key: str,
+        request_hash: str,
+        resource_id: str | None,
+        response: dict[str, Any],
+    ) -> None: ...
+
+
 class UnitOfWork(Protocol):
     projects: ProjectRepository
     evidence: EvidenceRepository
     runs: RunRepository
     agents: AgentRepository
+    idempotency: IdempotencyRepository
+    shares: Any
+    reviews: Any
+    experience_sessions: Any
+    versions: Any
+    conversations: Any
 
     async def commit(self) -> None: ...
 
@@ -157,7 +178,14 @@ class ProviderResponse(Protocol):
 class ValidatorPort(Protocol):
     """Restricted JSON-only bridge to the TypeScript validator (ADR-0004)."""
 
-    async def validate(self, spec: dict[str, Any], *, evidence_span_ids: Sequence[str]) -> dict[str, Any]: ...
+    async def validate(
+        self,
+        spec: dict[str, Any],
+        *,
+        evidence_span_ids: Sequence[str],
+        spec_hash: str,
+        semantic_hash: str,
+    ) -> dict[str, Any]: ...
 
 
 class PlaytestPort(Protocol):

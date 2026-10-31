@@ -22,6 +22,10 @@ class UnitOfWork:
         self.agents = repo.AgentRepository(session)
         self.versions = repo.VersionRepository(session)
         self.conversations = repo.ConversationRepository(session)
+        self.idempotency = repo.IdempotencyRepository(session)
+        self.shares = repo.SharesRepository(session)
+        self.reviews = repo.ReviewRepository(session)
+        self.experience_sessions = repo.ExperienceSessionRepository(session)
         self.committed = False
 
     async def commit(self) -> None:

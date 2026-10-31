@@ -40,3 +40,28 @@ def create_engine_with_pool(url: str) -> AsyncEngine:
 @pytest.fixture
 async def uow_factory(engine: AsyncEngine):
     return make_uow_factory(engine)
+
+
+@pytest.fixture(scope="session")
+def node_validator():
+    from pathlib import Path
+
+    from server.infrastructure.validation.node_validator import NodeValidator
+
+    root = Path(__file__).resolve().parents[2]
+    return NodeValidator(package_root=root / "packages" / "validator")
+
+
+@pytest.fixture
+def blob_store(tmp_path):
+    from server.infrastructure.blobs import LocalBlobStore
+
+    return LocalBlobStore(str(tmp_path / "blobs"))
+
+
+@pytest.fixture
+def scripted_provider():
+    from server.tests.providers import ScriptedProvider
+    from server.tests.scripted_agents import scripted
+
+    return ScriptedProvider(scripted())

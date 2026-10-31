@@ -52,6 +52,15 @@ OUTPUT_KIND: dict[AgentRole, str] = {
 }
 
 PROFILE_VERSION = "1.0.0"
+PROFILES: dict[AgentRole, str] = {
+    AgentRole.COORDINATOR: PROFILE_VERSION,
+    AgentRole.EVIDENCE: PROFILE_VERSION,
+    AgentRole.DESIGNER: PROFILE_VERSION,
+    AgentRole.BUILDER: PROFILE_VERSION,
+    AgentRole.REVIEW: PROFILE_VERSION,
+    AgentRole.REPAIR: PROFILE_VERSION,
+    AgentRole.GUIDE: PROFILE_VERSION,
+}
 
 
 class AgentTaskStatus(StrEnum):
