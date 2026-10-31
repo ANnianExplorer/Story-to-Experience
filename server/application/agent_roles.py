@@ -174,6 +174,58 @@ CANDIDATE_SCHEMA: dict[str, Any] = {
     "additionalProperties": False,
 }
 
+BUILDER_CONTENT_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "scenes": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 6,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string", "minLength": 1, "maxLength": 64},
+                    "title": {"type": "string", "minLength": 1, "maxLength": 80},
+                    "text": {"type": "string", "minLength": 1, "maxLength": 600},
+                    "task_label": {"type": ["string", "null"], "maxLength": 60},
+                    "success": {"type": ["string", "null"], "maxLength": 160},
+                    "failure": {"type": ["string", "null"], "maxLength": 160},
+                    "hints": {"type": "array", "items": {"type": "string", "maxLength": 80}, "maxItems": 2},
+                    "options": {
+                        "type": "array",
+                        "maxItems": 6,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "id": {"type": "string", "maxLength": 32},
+                                "label": {"type": "string", "minLength": 1, "maxLength": 60},
+                                "feedback": {"type": "string", "minLength": 1, "maxLength": 160},
+                            },
+                            "required": ["id", "label", "feedback"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+                "required": ["id", "title", "text", "task_label", "success", "failure", "hints", "options"],
+                "additionalProperties": False,
+            },
+        },
+        "dialogue": {
+            "type": "object",
+            "properties": {
+                "persona_name": {"type": "string", "minLength": 1, "maxLength": 60},
+                "persona_role": {"type": "string", "minLength": 1, "maxLength": 120},
+                "adaptation_note": {"type": "string", "minLength": 1, "maxLength": 400},
+                "hint_policy": {"enum": ["none", "gentle", "progressive"]},
+            },
+            "required": ["persona_name", "persona_role", "adaptation_note", "hint_policy"],
+            "additionalProperties": False,
+        },
+    },
+    "required": ["scenes", "dialogue"],
+    "additionalProperties": False,
+}
+
 REVIEW_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
@@ -263,11 +315,16 @@ claim_indexes 指向事实数组下标；不要引用不存在的事实。"""
         BASE_RULES
         + """
 
-你是 ExperienceBuilder。把冻结蓝图转成合法的 ExperienceSpec 1.0.0 JSON 与对话配置。
-必须满足：schema_version/runtime_version 均为 1.0.0；场景 4—6 个；必要任务 1—6 个；
-每个任务有独占 completion_flag；completion.required_flags 等于全部必要任务完成标记的集合；
-effects 只能 set_flag=true 且不得写任务完成标记；source_claim_id 使用给定 UUID；
-所有文本用纯文本，不含 HTML。"""
+你是 ExperienceBuilder，负责为已冻结的结构草稿撰写面向参与者的文字。
+结构（ID、标记、条件、跳转、事实绑定）已经由系统按蓝图生成，你**不要**改动结构，
+只输出每个场景的标题、正文、任务标签、成功/失败反馈、提示，以及对话角色设定。
+
+硬性要求：
+- 文字只能表述给定事实里的内容；不得补造工序、年代、人物原话或因果关系。
+- 资料没有写到的内容写进缺口思路，不要写成确定事实。
+- 正文纯文本，不含 HTML；每个场景正文 ≤ 120 字；反馈 ≤ 60 字。
+- 选择题每个选项的 label 与 feedback 都要写，且只有一个是正确答案（结构里已定）。
+- adaptation_note 必须说明该角色是改编创作，不是历史原话。"""
     ),
     AgentRole.REVIEW: (
         BASE_RULES
@@ -285,6 +342,172 @@ effects 只能 set_flag=true 且不得写任务完成标记；source_claim_id �
 不得修改 Schema 版本或测试配置。只输出最小 JSON Patch（op 只能是 replace）。"""
     ),
 }
+
+
+
+# A minimal, schema-valid shape for the trickiest parts of the spec. Models
+# systematically mis-write nested conditions, so one concrete example is worth
+# more than another paragraph of rules. `tests/test_spec_example.py` asserts
+# this example still validates against the versioned Schema, so it cannot drift.
+SPEC_EXAMPLE = {
+    "schema_version": "1.0.0",
+    "runtime_version": "1.0.0",
+    "brief": {"audience": "五年级学生", "duration_minutes": 5, "learning_goals": ["观察工具"]},
+    "source_snapshot_id": "10000000-0000-4000-8000-000000000001",
+    "entry_scene": "entry",
+    "flags": [
+        {"id": "clue_seen", "initial": False},
+        {"id": "choice_done", "initial": False},
+        {"id": "order_done", "initial": False},
+    ],
+    "claims": [
+        {
+            "id": "claim_tool",
+            "statement": "资料中的事实陈述。",
+            "content_type": "supported",
+            "evidence_span_ids": ["30000000-0000-4000-8000-000000000001"],
+            "source_claim_id": "20000000-0000-4000-8000-000000000001",
+            "source_claim_revision": 1,
+        },
+        {
+            "id": "claim_order",
+            "statement": "资料写明的先后关系。",
+            "content_type": "supported",
+            "evidence_span_ids": ["30000000-0000-4000-8000-000000000002"],
+            "source_claim_id": "20000000-0000-4000-8000-000000000002",
+            "source_claim_revision": 1,
+        },
+    ],
+    "objectives": [
+        {"id": "obj_tool", "description": "辨认工具。", "claim_ids": ["claim_tool"]},
+        {"id": "obj_order", "description": "理解顺序。", "claim_ids": ["claim_order"]},
+    ],
+    "scenes": [
+        {
+            "id": "entry",
+            "title": "入口",
+            "text": "观察工具。",
+            "content_type": "supported",
+            "asset_ids": [],
+            "claim_ids": ["claim_tool"],
+            "tasks": [
+                {
+                    "id": "hotspot_tool",
+                    "type": "hotspot",
+                    "label": "观察",
+                    "required": True,
+                    "completion_flag": "clue_seen",
+                    "objective_ids": ["obj_tool"],
+                    "claim_ids": ["claim_tool"],
+                    "requires": {"flag_equals": {"id": "order_done", "value": False}},
+                    "on_success": [],
+                    "feedback": {"success": "看到了。", "failure": "再找找。", "claim_ids": ["claim_tool"]},
+                    "hints": ["看左侧。"],
+                }
+            ],
+            "transitions": [
+                {
+                    "id": "go_choice",
+                    "label": "下一步",
+                    "requires": {"flag_equals": {"id": "clue_seen", "value": True}},
+                    "target_scene": "choice",
+                }
+            ],
+        },
+        {
+            "id": "choice",
+            "title": "选择",
+            "text": "它用来做什么？",
+            "content_type": "supported",
+            "asset_ids": [],
+            "claim_ids": ["claim_tool"],
+            "tasks": [
+                {
+                    "id": "choice_tool",
+                    "type": "choice",
+                    "label": "选择用途",
+                    "required": True,
+                    "completion_flag": "choice_done",
+                    "objective_ids": ["obj_tool"],
+                    "claim_ids": ["claim_tool"],
+                    "requires": {"flag_equals": {"id": "order_done", "value": False}},
+                    "on_success": [],
+                    "feedback": {"success": "正确。", "failure": "再想想。", "claim_ids": ["claim_tool"]},
+                    "hints": ["回看一下。"],
+                    "options": [
+                        {"id": "opt_yes", "label": "用于观察", "correct": True, "feedback": "正确。", "on_success": []},
+                        {"id": "opt_no", "label": "用于切割", "correct": False, "feedback": "不对。", "on_success": []},
+                    ],
+                }
+            ],
+            "transitions": [
+                {
+                    "id": "go_order",
+                    "label": "下一步",
+                    "requires": {"flag_equals": {"id": "choice_done", "value": True}},
+                    "target_scene": "order",
+                }
+            ],
+        },
+        {
+            "id": "order",
+            "title": "排序",
+            "text": "按资料顺序排列。",
+            "content_type": "supported",
+            "asset_ids": [],
+            "claim_ids": ["claim_order"],
+            "tasks": [
+                {
+                    "id": "order_steps",
+                    "type": "sequence",
+                    "label": "排列",
+                    "required": True,
+                    "completion_flag": "order_done",
+                    "objective_ids": ["obj_order"],
+                    "claim_ids": ["claim_order"],
+                    "requires": {"flag_equals": {"id": "clue_seen", "value": True}},
+                    "on_success": [],
+                    "feedback": {"success": "正确。", "failure": "顺序不对。", "claim_ids": ["claim_order"]},
+                    "hints": ["先想第一步。"],
+                    "items": [{"id": "A", "label": "甲"}, {"id": "B", "label": "乙"}],
+                    "precedence": [{"before": "A", "after": "B", "claim_id": "claim_order"}],
+                }
+            ],
+            "transitions": [
+                {
+                    "id": "finish",
+                    "label": "完成",
+                    "requires": {
+                        "all": [
+                            {"flag_equals": {"id": "clue_seen", "value": True}},
+                            {"flag_equals": {"id": "choice_done", "value": True}},
+                            {"flag_equals": {"id": "order_done", "value": True}},
+                        ]
+                    },
+                    "target_scene": "done",
+                }
+            ],
+        },
+        {
+            "id": "done",
+            "title": "完成",
+            "text": "结束。",
+            "content_type": "adaptation",
+            "asset_ids": [],
+            "claim_ids": [],
+            "tasks": [],
+            "transitions": [],
+        },
+    ],
+    "completion": {"scene_id": "done", "required_flags": ["clue_seen", "choice_done", "order_done"]},
+    "asset_manifest": [],
+}
+
+CONDITION_RULES = """条件与效果的写法（必须严格遵守）：
+- 条件只有四种：{"flag_equals": {"id": "标记", "value": true|false}}、{"all": [条件, ...]}、{"any": [条件, ...]}、{"not": 条件}。
+- 不得把标记名直接写进 all/any 数组；数组元素必须是完整的条件对象。
+- 无前置条件时写 {"flag_equals": {"id": "某个_initial=false_的标记", "value": false}}，不要用空 all。
+- 效果只能是 {"set_flag": "标记", "value": true}；任务的 completion_flag 不要写进 on_success。"""
 
 
 # ---------------------------------------------------------------------------

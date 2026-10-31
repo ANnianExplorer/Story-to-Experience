@@ -377,7 +377,12 @@ class ConversationService:
             payload = {}
         answer = str(payload.get("answer") or response.text).strip()[: self._budget.max_output_tokens_per_turn * 4]
         cited_ids = [str(value) for value in payload.get("citation_span_ids") or [] if str(value) in allowed]
-        citations = self._citations_for(cited_ids, spans, source_labels)
+        claim_by_span = {
+            span_id: claim["id"]
+            for claim in (version or {}).get("spec", {}).get("claims", [])
+            for span_id in claim.get("evidence_span_ids", [])
+        }
+        citations = self._citations_for(cited_ids, spans, source_labels, claim_by_span)
         actions = self._actions_for(payload.get("suggested_actions") or [], version)
         answerability = _answerability(payload.get("answerability"), citations)
 
@@ -547,7 +552,12 @@ class ConversationService:
         return "\n".join(parts)
 
     @staticmethod
-    def _citations_for(cited_ids: list[str], spans: list[dict[str, object]], labels: dict[str, str]) -> tuple[Citation, ...]:
+    def _citations_for(
+        cited_ids: list[str],
+        spans: list[dict[str, object]],
+        labels: dict[str, str],
+        claim_by_span: dict[str, str] | None = None,
+    ) -> tuple[Citation, ...]:
         by_id = {span["span_id"]: span for span in spans}
         citations: list[Citation] = []
         for span_id in cited_ids:
@@ -562,6 +572,7 @@ class ConversationService:
                     quote=str(span["quote"]),
                     start_cp=0,
                     end_cp=len(str(span["quote"])),
+                    claim_ids=((claim_by_span or {}).get(span_id),) if (claim_by_span or {}).get(span_id) else (),
                     public=True,
                 )
             )

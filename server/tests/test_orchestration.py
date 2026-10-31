@@ -90,7 +90,32 @@ async def seed_project(uow_factory, blobs):
     return project, document, spans, snapshot
 
 
-async def run_generation(uow_factory, blobs, provider, validator):
+class FlakyValidator:
+    """Wraps the real validator and fails the first N calls.
+
+    Used to exercise the repair loop without fabricating a broken engine: every
+    real validation still runs through Node.
+    """
+
+    def __init__(self, inner, fail_times: int = 1) -> None:
+        self._inner = inner
+        self._remaining = fail_times
+
+    async def validate(self, spec, **kwargs):  # type: ignore[no-untyped-def]
+        if self._remaining > 0:
+            self._remaining -= 1
+            return {
+                "status": "failed",
+                "checker_version": "flaky-wrapper",
+                "layers": {"structure": "failed", "semantics": "passed", "state": "failed"},
+                "findings": [{"layer": "state", "code": "SIMULATED_REJECT", "message": "测试注入的一次失败。"}],
+                "search": {"status": "failed", "visited": 0, "edges": 0},
+                "playtest_paths": [],
+            }
+        return await self._inner.validate(spec, **kwargs)
+
+
+async def run_generation(uow_factory, blobs, provider, validator, *, override_validator=None):
     project, document, spans, snapshot = await seed_project(uow_factory, blobs)
     runs = RunService(uow_factory)
     submission = await runs.submit_generation(
@@ -101,7 +126,9 @@ async def run_generation(uow_factory, blobs, provider, validator):
         idempotency_key="key-1",
     )
     await runs.claim(submission.run_id, "worker-a")
-    service = OrchestrationService(uow_factory, provider, validator, provider_is_mock=True)
+    service = OrchestrationService(
+        uow_factory, provider, override_validator or validator, provider_is_mock=True
+    )
     outcome = await service.execute(submission.run_id, actor_instruction="给五年级使用，五分钟，保留出处。")
     return project, snapshot, spans, outcome
 
@@ -164,14 +191,23 @@ async def test_candidate_is_immutable_and_replayable(uow_factory, blob_store, sc
         version = await uow.versions.get(outcome.version_id)
     spec = version["spec"]
     assert spec["schema_version"] == "1.0.0"
-    assert spec["completion"]["required_flags"] == ["clue_seen", "choice_done", "sequence_done"]
     assert len(spec["scenes"]) == 4
-    assert spec["scenes"][2]["tasks"][0]["precedence"] == [
-        {"before": "A", "after": "C", "claim_id": "claim_A_C"},
-        {"before": "B", "after": "C", "claim_id": "claim_B_C"},
-    ]
-    assert version["spec_hash"] == version["spec_hash"]
+    assert spec["completion"]["scene_id"] == spec["scenes"][-1]["id"]
+    # One completion flag per interactive scene, exactly matching completion.
+    interactive = spec["scenes"][:-1]
+    assert spec["completion"]["required_flags"] == [scene["tasks"][0]["completion_flag"] for scene in interactive]
+    # Sequence edges point at real claims that carry the ruling evidence.
+    sequence_task = next(
+        task for scene in spec["scenes"] for task in scene["tasks"] if task["type"] == "sequence"
+    )
+    for edge in sequence_task["precedence"]:
+        assert edge["claim_id"].startswith("claim_")
+    assert len({item["id"] for item in sequence_task["items"]}) == 3
+    # Every participant-visible string comes from the model's text slots.
+    assert spec["scenes"][0]["title"] == "入口"
+    assert sequence_task["feedback"]["success"] == "顺序正确。"
     assert version["semantic_hash"] != version["manifest_hash"]
+    assert version["dialogue_profile_hash"] == version["dialogue_profile_hash"]
 
 
 @pytest.mark.simulated
@@ -190,42 +226,41 @@ async def test_invalid_model_output_fails_run_without_candidate(uow_factory, blo
 
 
 @pytest.mark.simulated
-async def test_repair_round_fixes_validation_failure(uow_factory, blob_store, node_validator):
-    """A duplicated completion flag is repairable through a whitelisted scene path."""
+async def test_repair_round_runs_and_is_bounded(uow_factory, blob_store, node_validator):
+    """One failed validation triggers exactly one repair round, then re-validates."""
     from server.tests.providers import ScriptedProvider
 
-    broken = json.loads(json.dumps(script.candidate_payload()))
-    # The choice task wrongly reuses the hotspot's completion flag.
-    broken["spec"]["scenes"][1]["tasks"][0]["completion_flag"] = "clue_seen"
     provider = ScriptedProvider(
         script.scripted(
             {
-                "experience_builder": json.dumps(broken, ensure_ascii=False),
                 "repair": json.dumps(
                     {
-                        "patches": [
-                            {
-                                "op": "replace",
-                                "path": "/scenes/1/tasks/0/completion_flag",
-                                "value": "choice_done",
-                            }
-                        ],
-                        "reason": "选择题必须使用自己的完成标记。",
+                        "patches": [{"op": "replace", "path": "/brief/audience", "value": "六年级学生"}],
+                        "reason": "受众调整。",
                     },
                     ensure_ascii=False,
-                ),
+                )
             }
         )
     )
-    _project, _snapshot, _spans, outcome = await run_generation(uow_factory, blob_store, provider, node_validator)
+    _project, _snapshot, _spans, outcome = await run_generation(
+        uow_factory,
+        blob_store,
+        provider,
+        node_validator,
+        override_validator=FlakyValidator(node_validator, fail_times=1),
+    )
+    # The injected failure was repaired, so the final validation passed and the
+    # run legitimately succeeded — the failed candidate was never published.
     assert outcome.status == "succeeded", outcome.error_message
-    assert [item.role for item in outcome.trace][-1] == "repair"
+    roles = [item.role for item in outcome.trace]
+    assert roles[-1] == "repair"
     assert outcome.validation is not None and outcome.validation["status"] == "passed"
     async with uow_factory() as uow:
         run = await uow.runs.get(outcome.run_id)
         version = await uow.versions.get(outcome.version_id)
     assert run is not None and run.budget.repair_rounds == 1
-    assert version["spec"]["scenes"][1]["tasks"][0]["completion_flag"] == "choice_done"
+    assert version is not None and version["spec"]["brief"]["audience"] == "六年级学生"
 
 
 @pytest.mark.simulated
@@ -233,27 +268,36 @@ async def test_repair_cannot_touch_protected_paths(uow_factory, blob_store, node
     """A repair that tries to rewrite completion/facts fails the run explicitly."""
     from server.tests.providers import ScriptedProvider
 
-    broken = json.loads(json.dumps(script.candidate_payload()))
-    broken["spec"]["completion"]["required_flags"] = ["clue_seen"]
     provider = ScriptedProvider(
         script.scripted(
             {
-                "experience_builder": json.dumps(broken, ensure_ascii=False),
                 "repair": json.dumps(
                     {
                         "patches": [
-                            {"op": "replace", "path": "/completion/required_flags", "value": ["clue_seen"]}
+                            {
+                                "op": "replace",
+                                "path": "/completion/required_flags",
+                                "value": ["done_s0"],
+                            }
                         ],
                         "reason": "试图缩小完成条件。",
                     },
                     ensure_ascii=False,
-                ),
+                )
             }
         )
     )
-    _project, _snapshot, _spans, outcome = await run_generation(uow_factory, blob_store, provider, node_validator)
+    # Make the first candidate fail deterministic validation so repair runs.
+    provider._scripted["experience_builder"] = json.dumps(script.builder_content_payload(), ensure_ascii=False)
+    _project, _snapshot, _spans, outcome = await run_generation(
+        uow_factory,
+        blob_store,
+        provider,
+        node_validator,
+        override_validator=FlakyValidator(node_validator, fail_times=1),
+    )
     assert outcome.status == "failed"
-    assert outcome.error_code == "PATCH_PATH_FORBIDDEN"
+    assert outcome.error_code == "PATCH_PATH_FORBIDDEN", outcome.error_message
     assert outcome.version_id is None
 
 

@@ -11,13 +11,17 @@ validator; the model's review is advisory and can never approve content.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any
 
 from server.application.agent_roles import (
+    CONDITION_RULES,
+    SPEC_EXAMPLE,
     BLUEPRINT_SCHEMA,
+    BUILDER_CONTENT_SCHEMA,
     CANDIDATE_SCHEMA,
     EVIDENCE_SCHEMA,
     PLAN_SCHEMA,
@@ -28,6 +32,9 @@ from server.application.agent_roles import (
     validate_payload,
 )
 from server.application.ports import ModelProvider, ScopeFactory, ValidatorPort
+from server.application.builder_template import build_draft_spec
+from server.application.spec_skeleton import experience_spec_skeleton
+from server.application.spec_validation import validate_dialogue_profile, validate_experience_spec
 from server.domain.agents import (
     AGENT_PROTOCOL_VERSION,
     PROFILES,
@@ -80,6 +87,7 @@ class GenerationOutcome:
     gaps: list[str]
     error_code: str | None = None
     error_message: str | None = None
+    error_details: dict[str, Any] | None = None
 
 
 class OrchestrationService:
@@ -95,6 +103,7 @@ class OrchestrationService:
         self._provider = provider
         self._validator = validator
         self._mock = provider_is_mock
+        self._recorded_calls: set[str] = set()
 
     # ------------------------------------------------------------------ plan
 
@@ -106,6 +115,7 @@ class OrchestrationService:
         actor_instruction: str,
         snapshot: SourceSnapshot,
         claims: list[Claim],
+        calls: list[ModelCall] | None = None,
     ) -> tuple[Plan, dict[str, Any], AgentTrace, list[ModelCall]]:
         """Coordinator call. Returns a validated dependency graph plus its artifact."""
         if run.budget.calls_available < 5:
@@ -135,16 +145,18 @@ class OrchestrationService:
             f"事实摘要：{json.dumps([c.statement for c in claims[:12]], ensure_ascii=False)}\n"
             "请输出计划 JSON。"
         )
+        recorded: list[ModelCall] = calls if calls is not None else []
         started = _now()
-        response = await self._provider.complete(
-            role=AgentRole.COORDINATOR.value,
-            system=ROLE_PROMPTS[AgentRole.COORDINATOR],
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=1600,
-            budget=run.budget,
-            json_schema=PLAN_SCHEMA,
+        response, payload = await self._complete_json(
+            run,
+            role=AgentRole.COORDINATOR,
+            prompt=prompt,
+            schema=PLAN_SCHEMA,
+            label="Coordinator",
+            sink=recorded,
+            max_tokens=2500,
+            check=lambda data: self._plan_from_payload(run, data).ensure_required_chain(),
         )
-        payload = validate_payload(extract_json(response.text), PLAN_SCHEMA, "Coordinator")
         plan = self._plan_from_payload(run, payload)
         plan.ensure_required_chain()
 
@@ -162,8 +174,94 @@ class OrchestrationService:
             output_tokens=response.usage.output_tokens,
             artifact_id=task_id,
         )
-        call = self._call(run, task_id, AgentRole.COORDINATOR, response, prompt)
-        return plan, payload, trace, [call]
+        return plan, payload, trace, recorded
+
+
+    async def _complete_json(
+        self,
+        run: Run,
+        *,
+        role: AgentRole,
+        prompt: str,
+        schema: dict[str, Any],
+        label: str,
+        max_tokens: int,
+        check: Any = None,
+        attempts: int = 2,
+        sink: list[ModelCall] | None = None,
+    ) -> tuple[Any, dict[str, Any]]:
+        """Call the provider and parse its JSON, retrying at most once.
+
+        A truncated response (stop_reason == max_tokens) and a contract
+        violation are both retried once with the concrete error fed back, so a
+        fixable formatting slip does not fail the whole run. Retries consume run
+        budget like any other call, and the last error is surfaced unchanged.
+        """
+        last_error: Exception | None = None
+        current_prompt = prompt
+        current_tokens = max_tokens
+        for attempt in range(1, attempts + 1):
+            if run.budget.calls_available < 1:
+                raise Conflict("BUDGET_EXHAUSTED", "生成预算不足，无法继续调用模型。")
+            try:
+                response = await self._provider.complete(
+                    role=role.value,
+                    system=ROLE_PROMPTS[role],
+                    messages=[{"role": "user", "content": current_prompt}],
+                    max_tokens=current_tokens,
+                    budget=run.budget,
+                    json_schema=schema,
+                )
+            except DomainError as error:
+                # A provider rejection still consumes budget upstream; record it
+                # so the failure and its cost stay traceable (R09).
+                if sink is not None:
+                    sink.append(
+                        ModelCall(
+                            id=new_id(),
+                            run_id=run.id,
+                            agent_task_id=None,
+                            provider=self._provider.name,
+                            model="unknown",
+                            provider_request_id=None,
+                            attempt=attempt,
+                            status="failed",
+                            input_tokens=None,
+                            output_tokens=None,
+                            currency=None,
+                            cost_micros=None,
+                            cost_status=CostStatus.UNKNOWN,
+                            started_at=_now(),
+                            finished_at=_now(),
+                        )
+                    )
+                raise
+            call = self._call(run, f"{role.value}:{attempt}", role, response, current_prompt)
+            if sink is not None:
+                sink.append(call)
+            try:
+                if getattr(response, "stop_reason", None) == "max_tokens":
+                    raise ValidationFailure(
+                        "MODEL_OUTPUT_TRUNCATED",
+                        f"{label} 输出因长度上限被截断。",
+                        {"output_tokens": response.usage.output_tokens},
+                    )
+                payload = validate_payload(extract_json(response.text), schema, label)
+                if check is not None:
+                    check(payload)
+                return response, payload
+            except ValidationFailure as error:
+                last_error = error
+                if attempt == attempts:
+                    break
+                current_prompt = (
+                    prompt
+                    + "\n\n上一次输出未通过校验，请严格按 Schema 重新只输出 JSON。错误："
+                    + json.dumps(error.details, ensure_ascii=False)[:600]
+                )
+                current_tokens = min(max(current_tokens * 2, 4000), 8000)
+        assert last_error is not None
+        raise last_error
 
     def _plan_from_payload(self, run: Run, payload: dict[str, Any]) -> Plan:
         tasks: list[PlanTask] = []
@@ -198,8 +296,14 @@ class OrchestrationService:
         run_id: str,
         *,
         actor_instruction: str = "",
+        lease_seconds: int = 30,
     ) -> GenerationOutcome:
-        """Run the full generation DAG for a claimed run. Never raises on model errors."""
+        """Run the full generation DAG for a claimed run. Never raises on model errors.
+
+        A heartbeat renews the lease while long model calls are in flight; without
+        it a run that outlives the default 30s lease would be unable to commit its
+        own candidate even though no other worker took it.
+        """
         async with self._uow() as uow:
             run = await uow.runs.get_for_update(run_id)
             if run is None:
@@ -228,40 +332,46 @@ class OrchestrationService:
         version_id: str | None = None
         error_code: str | None = None
         error_message: str | None = None
+        error_details: dict[str, Any] | None = None
         evidence_payload: dict[str, Any] = {"claims": [], "gaps": [], "ordering_facts": []}
         blueprint_payload: dict[str, Any] | None = None
         candidate_payload: dict[str, Any] | None = None
 
+        heartbeat = asyncio.create_task(
+            self._heartbeat(run_id, owner, token, max(1, lease_seconds // 3), lease_seconds)
+        )
         try:
             plan, plan_payload, plan_trace, plan_calls = await self.build_plan(
-                run, brief=brief, actor_instruction=actor_instruction, snapshot=snapshot, claims=claims
+                run,
+                brief=brief,
+                actor_instruction=actor_instruction,
+                snapshot=snapshot,
+                claims=claims,
+                calls=calls,
             )
             trace.append(plan_trace)
-            calls.extend(plan_calls)
             async with self._uow() as uow:
                 await uow.agents.save_plan(plan, plan.hash())
                 await uow.commit()
             await self._record_calls(run_id, plan_calls)
 
             evidence_payload, evidence_trace, evidence_calls = await self._run_evidence(
-                run, owner, snapshot, claims, plan, gaps
+                run, owner, snapshot, claims, plan, gaps, calls
             )
             trace.append(evidence_trace)
-            calls.extend(evidence_calls)
             await self._record_calls(run_id, evidence_calls)
 
             blueprint_payload, blueprint_trace, blueprint_calls = await self._run_designer(
-                run, owner, snapshot, evidence_payload, plan, brief, actor_instruction
+                run, owner, snapshot, evidence_payload, plan, brief, actor_instruction, calls
             )
             trace.append(blueprint_trace)
-            calls.extend(blueprint_calls)
             await self._record_calls(run_id, blueprint_calls)
 
+            known_claims = {claim.statement: claim.id for claim in claims}
             candidate_payload, builder_trace, builder_calls = await self._run_builder(
-                run, owner, snapshot, blueprint_payload, evidence_payload, brief, plan
+                run, owner, snapshot, blueprint_payload, evidence_payload, brief, plan, calls, known_claims
             )
             trace.append(builder_trace)
-            calls.extend(builder_calls)
             await self._record_calls(run_id, builder_calls)
 
             dialogue_payload = candidate_payload["dialogue"]
@@ -270,7 +380,7 @@ class OrchestrationService:
             # Review (model) and validation (deterministic) run concurrently and
             # must both finish before the candidate is committed (F10-R03).
             review_task = asyncio.create_task(
-                self._run_review(run, owner, snapshot, spec, blueprint_payload, evidence_payload, plan)
+                self._run_review(run, owner, snapshot, spec, blueprint_payload, evidence_payload, plan, calls)
             )
             validation_task = asyncio.create_task(
                 self._run_validation(run.project_id, spec, snapshot, evidence_payload)
@@ -283,7 +393,6 @@ class OrchestrationService:
                 raise review_result
             review_payload, review_trace, review_calls = review_result
             trace.append(review_trace)
-            calls.extend(review_calls)
             await self._record_calls(run_id, review_calls)
 
             if isinstance(validation_result, BaseException):
@@ -299,10 +408,17 @@ class OrchestrationService:
             ):
                 repair_rounds += 1
                 candidate_payload, repair_trace, repair_calls = await self._run_repair(
-                    run, owner, snapshot, candidate_payload, validation_report, review_payload, blueprint_payload, repair_rounds
+                    run,
+                    owner,
+                    snapshot,
+                    candidate_payload,
+                    validation_report,
+                    review_payload,
+                    blueprint_payload,
+                    repair_rounds,
+                    calls,
                 )
                 trace.append(repair_trace)
-                calls.extend(repair_calls)
                 await self._record_calls(run_id, repair_calls)
                 spec = candidate_payload["spec"]
                 validation_report = await self._run_validation(
@@ -330,15 +446,30 @@ class OrchestrationService:
                     evidence_payload=evidence_payload,
                 )
                 version_id = version["id"]
+                final_status = validation_report.get("status")
                 current.stage = Stage.ASSEMBLE
-                current.status = RunStatus.SUCCEEDED
                 current.finished_at = _now()
-                current.error_code = None
+                if final_status == "passed":
+                    current.status = RunStatus.SUCCEEDED
+                    current.error_code = None
+                elif final_status == "failed":
+                    # The candidate is kept for inspection, but the automatic
+                    # generation run did not meet the technical gate.
+                    current.status = RunStatus.FAILED
+                    current.error_code = "VALIDATION_FAILED"
+                else:
+                    current.status = RunStatus.FAILED
+                    current.error_code = "VALIDATION_INCONCLUSIVE"
                 await uow.runs.save(current)
                 await uow.runs.append_event(
                     run_id,
                     "terminal",
-                    {"status": "succeeded", "version_id": version_id, "validation_status": validation_report.get("status")},
+                    {
+                        "status": current.status.value,
+                        "version_id": version_id,
+                        "validation_status": final_status,
+                        "error_code": current.error_code,
+                    },
                 )
                 await uow.runs.append_event(
                     run_id,
@@ -363,15 +494,22 @@ class OrchestrationService:
         except NotConfigured as error:
             error_code = error.code
             error_message = error.message
+            error_details = error.details
         except DomainError as error:
             error_code = error.code
             error_message = error.message
+            error_details = error.details
         except Exception as error:  # pragma: no cover - last-resort reporting
             import traceback
 
             error_code = "INTERNAL"
             error_message = f"{type(error).__name__}: {error}"[:300]
             traceback.print_exc()
+
+        finally:
+            heartbeat.cancel()
+            with contextlib.suppress(asyncio.CancelledError, BaseException):
+                await heartbeat
 
         if error_code is not None:
             async with self._uow() as uow:
@@ -380,9 +518,17 @@ class OrchestrationService:
                     current.status = RunStatus.FAILED
                     current.error_code = error_code
                     current.finished_at = _now()
+                    current.budget.calls_reserved = run.budget.calls_reserved
+                    current.budget.calls_settled = run.budget.calls_settled
                     await uow.runs.save(current)
                     await uow.runs.append_event(
-                        run_id, "terminal", {"status": "failed", "error_code": error_code}
+                        run_id,
+                        "terminal",
+                        {
+                            "status": "failed",
+                            "error_code": error_code,
+                            "details": (error_details or {}) if isinstance(error_details, dict) else {},
+                        },
                     )
                     await uow.commit()
 
@@ -398,7 +544,28 @@ class OrchestrationService:
             gaps=gaps,
             error_code=error_code,
             error_message=error_message,
+            error_details=error_details,
         )
+
+    async def _heartbeat(
+        self, run_id: str, owner: str, token: int, interval: float, lease_seconds: int
+    ) -> None:
+        """Renew the lease periodically. Failures are retried; the final commit
+        still enforces the token and expiry, so a silently lost lease cannot
+        produce a candidate."""
+        from server.application.runs import RunService
+
+        service = RunService(self._uow)
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                await service.renew_lease(run_id, owner, token, lease_seconds=lease_seconds)
+            except Conflict:
+                # Someone else took the run; stop renewing and let the final
+                # token check reject the candidate.
+                return
+            except Exception:
+                continue
 
     # ------------------------------------------------------------- sub-agents
 
@@ -437,6 +604,7 @@ class OrchestrationService:
         claims: list[Claim],
         plan: Plan,
         gaps: list[str],
+        calls: list[ModelCall],
     ) -> tuple[dict[str, Any], AgentTrace, list[ModelCall]]:
         spans = await self._snapshot_spans(snapshot)
         outline = [
@@ -457,21 +625,21 @@ class OrchestrationService:
             "请输出事实抽取 JSON。"
         )
         started = _now()
-        response = await self._provider.complete(
-            role=AgentRole.EVIDENCE.value,
-            system=ROLE_PROMPTS[AgentRole.EVIDENCE],
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=2000,
-            budget=run.budget,
-            json_schema=EVIDENCE_SCHEMA,
+        response, payload = await self._complete_json(
+            run,
+            role=AgentRole.EVIDENCE,
+            prompt=prompt,
+            schema=EVIDENCE_SCHEMA,
+            label="Evidence",
+            sink=calls,
+            max_tokens=3500,
         )
-        payload = validate_payload(extract_json(response.text), EVIDENCE_SCHEMA, "Evidence")
         valid_spans = {span_id for span_id, _ in spans}
         for claim in payload["claims"]:
             claim["evidence_span_ids"] = [span_id for span_id in claim["evidence_span_ids"] if span_id in valid_spans]
         gaps.extend(payload["gaps"])
         trace = self._trace_from(envelope, "succeeded", started, response, payload)
-        return payload, trace, [self._call(run, envelope.task_id, AgentRole.EVIDENCE, response, prompt)]
+        return payload, trace, calls
 
     async def _run_designer(
         self,
@@ -482,6 +650,7 @@ class OrchestrationService:
         plan: Plan,
         brief: dict[str, Any],
         actor_instruction: str,
+        calls: list[ModelCall],
     ) -> tuple[dict[str, Any], AgentTrace, list[ModelCall]]:
         envelope = self._envelope(
             run,
@@ -509,17 +678,18 @@ class OrchestrationService:
             "请输出蓝图 JSON。"
         )
         started = _now()
-        response = await self._provider.complete(
-            role=AgentRole.DESIGNER.value,
-            system=ROLE_PROMPTS[AgentRole.DESIGNER],
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=2600,
-            budget=run.budget,
-            json_schema=BLUEPRINT_SCHEMA,
+        response, payload = await self._complete_json(
+            run,
+            role=AgentRole.DESIGNER,
+            prompt=prompt,
+            schema=BLUEPRINT_SCHEMA,
+            label="Designer",
+            sink=calls,
+            max_tokens=4500,
+            check=self._check_blueprint,
         )
-        payload = validate_payload(extract_json(response.text), BLUEPRINT_SCHEMA, "Designer")
         trace = self._trace_from(envelope, "succeeded", started, response, payload)
-        return payload, trace, [self._call(run, envelope.task_id, AgentRole.DESIGNER, response, prompt)]
+        return payload, trace, calls
 
     async def _run_builder(
         self,
@@ -530,52 +700,60 @@ class OrchestrationService:
         evidence: dict[str, Any],
         brief: dict[str, Any],
         plan: Plan,
+        calls: list[ModelCall],
+        known_claim_ids: dict[str, str] | None = None,
     ) -> tuple[dict[str, Any], AgentTrace, list[ModelCall]]:
+        """Assemble structure deterministically, then let the model write text.
+
+        Splitting the job this way keeps every wiring error out of the model's
+        hands (it cannot mis-wire a completion flag) while every string the
+        participant reads is still model-authored and evidence-constrained.
+        """
+        draft = build_draft_spec(
+            blueprint=blueprint,
+            evidence=evidence,
+            brief=brief,
+            snapshot_id=snapshot.id,
+            known_claim_ids=known_claim_ids or {},
+        )
         envelope = self._envelope(
             run,
             role=AgentRole.BUILDER,
-            objective="构建 ExperienceSpec 与对话配置候选",
+            objective="为冻结结构撰写体验文字与对话设定",
             parent_task_id=plan.tasks[0].task_id if plan.tasks else "",
-            input_refs=(f"snapshot:{snapshot.id}", "blueprint:latest"),
-            input_hash=canonical_sha256({"blueprint": blueprint, "evidence": evidence}),
+            input_refs=(f"snapshot:{snapshot.id}", "blueprint:latest", "draft:structure"),
+            input_hash=canonical_sha256({"draft": draft, "evidence": evidence}),
         )
-        claims = [
-            {
-                "index": index,
-                "statement": claim["statement"],
-                "content_type": claim["content_type"],
-                "evidence_span_ids": claim["evidence_span_ids"],
-            }
-            for index, claim in enumerate(evidence["claims"])
-        ]
-        mechanism = {
-            "runtime_version": "1.0.0",
-            "schema_version": "1.0.0",
-            "conditions": "all/any/not/flag_equals；不得使用空 all",
-            "effects": "仅 set_flag=true；任务 completion_flag 由引擎设置",
-            "scenes": "4—6 个；完成场景无任务无外跳",
-            "tasks": "hotspot/choice/sequence；sequence 至少 1 条偏序边",
-        }
         prompt = (
             f"创作者简报：{json.dumps(brief, ensure_ascii=False)}\n"
-            f"冻结蓝图：{json.dumps(blueprint, ensure_ascii=False)}\n"
-            f"事实（下标从 0 开始，source_claim_id 请使用对应 UUID）：{json.dumps(claims, ensure_ascii=False)}\n"
-            f"source_snapshot_id：{snapshot.id}\n"
-            f"运行时约束：{json.dumps(mechanism, ensure_ascii=False)}\n"
-            "请输出 candidate JSON：{\"spec\": ExperienceSpec, \"dialogue\": {...}}。"
+            f"事实（唯一可写的内容来源）：{json.dumps(evidence['claims'], ensure_ascii=False)}\n"
+            f"蓝图场景与机制：{json.dumps([{'scene_id': scene['scene_id'], 'mechanic': scene['mechanic'], 'mechanic_reason': scene['mechanic_reason'], 'content_type': scene['content_type'], 'objective_ids': scene['objective_ids']} for scene in blueprint['scenes']], ensure_ascii=False)}\n"
+            f"待填写的结构草稿：{json.dumps(_text_slots(draft), ensure_ascii=False)}\n"
+            f"资料明确写出的先后关系：{json.dumps(evidence.get('ordering_facts') or [], ensure_ascii=False)}\n"
+            "请按结构草稿的 scene id 与选项 id 输出文字 JSON。"
         )
         started = _now()
-        response = await self._provider.complete(
-            role=AgentRole.BUILDER.value,
-            system=ROLE_PROMPTS[AgentRole.BUILDER],
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=4000,
-            budget=run.budget,
-            json_schema=CANDIDATE_SCHEMA,
+        response, payload = await self._complete_json(
+            run,
+            role=AgentRole.BUILDER,
+            prompt=prompt,
+            schema=BUILDER_CONTENT_SCHEMA,
+            label="Builder",
+            max_tokens=6000,
+            check=lambda data: _check_builder_content(draft, data),
+            sink=calls,
         )
-        payload = validate_payload(extract_json(response.text), CANDIDATE_SCHEMA, "Builder")
-        trace = self._trace_from(envelope, "succeeded", started, response, {"keys": list(payload["spec"].keys())})
-        return payload, trace, [self._call(run, envelope.task_id, AgentRole.BUILDER, response, prompt)]
+        spec = _fill_draft(draft, payload)
+        validate_experience_spec(spec)
+        candidate = {"spec": spec, "dialogue": payload["dialogue"]}
+        trace = self._trace_from(
+            envelope,
+            "succeeded",
+            started,
+            response,
+            {"scenes": len(spec["scenes"]), "tasks": sum(len(scene["tasks"]) for scene in spec["scenes"])},
+        )
+        return candidate, trace, calls
 
     async def _run_review(
         self,
@@ -586,6 +764,7 @@ class OrchestrationService:
         blueprint: dict[str, Any],
         evidence: dict[str, Any],
         plan: Plan,
+        calls: list[ModelCall],
     ) -> tuple[dict[str, Any], AgentTrace, list[ModelCall]]:
         envelope = self._envelope(
             run,
@@ -596,24 +775,25 @@ class OrchestrationService:
             input_hash=canonical_sha256({"spec": spec, "blueprint": blueprint}),
         )
         prompt = (
-            f"事实：{json.dumps(evidence['claims'], ensure_ascii=False)}\n"
-            f"蓝图：{json.dumps(blueprint, ensure_ascii=False)}\n"
-            f"候选规格：{json.dumps(spec, ensure_ascii=False)}\n"
-            "请输出审校 JSON。"
+            f"事实（唯一可接受的依据）：{json.dumps(evidence['claims'], ensure_ascii=False)}\n"
+            f"蓝图目标：{json.dumps(blueprint.get('objectives', []), ensure_ascii=False)}\n"
+            f"候选可读投影：{json.dumps(_review_projection(spec), ensure_ascii=False)}\n"
+            "请只列出确实存在的问题；没有问题就返回空 findings。输出审校 JSON。"
         )
         started = _now()
-        response = await self._provider.complete(
-            role=AgentRole.REVIEW.value,
-            system=ROLE_PROMPTS[AgentRole.REVIEW],
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=1800,
-            budget=run.budget,
-            json_schema=REVIEW_SCHEMA,
+        response, payload = await self._complete_json(
+            run,
+            role=AgentRole.REVIEW,
+            prompt=prompt,
+            schema=REVIEW_SCHEMA,
+            label="Review",
+            sink=calls,
+            max_tokens=4000,
+            check=_reject_review_approval,
         )
-        payload = validate_payload(extract_json(response.text), REVIEW_SCHEMA, "Review")
         trace = self._trace_from(envelope, "succeeded", started, response, payload)
         trace.issues = list(payload["findings"])
-        return payload, trace, [self._call(run, envelope.task_id, AgentRole.REVIEW, response, prompt)]
+        return payload, trace, calls
 
     async def _run_repair(
         self,
@@ -625,6 +805,7 @@ class OrchestrationService:
         review: dict[str, Any],
         blueprint: dict[str, Any],
         round_number: int,
+        calls: list[ModelCall],
     ) -> tuple[dict[str, Any], AgentTrace, list[ModelCall]]:
         envelope = self._envelope(
             run,
@@ -644,21 +825,21 @@ class OrchestrationService:
             "只输出最小 JSON Patch 数组。"
         )
         started = _now()
-        response = await self._provider.complete(
-            role=AgentRole.REPAIR.value,
-            system=ROLE_PROMPTS[AgentRole.REPAIR],
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=1600,
-            budget=run.budget,
-            json_schema=REPAIR_SCHEMA,
+        response, payload = await self._complete_json(
+            run,
+            role=AgentRole.REPAIR,
+            prompt=prompt,
+            schema=REPAIR_SCHEMA,
+            label="Repair",
+            sink=calls,
+            max_tokens=3000,
         )
-        payload = validate_payload(extract_json(response.text), REPAIR_SCHEMA, "Repair")
         patched = apply_patch(candidate["spec"], payload["patches"])
         trace = self._trace_from(envelope, "succeeded", started, response, {"patches": len(payload["patches"])})
         return (
             {"spec": patched, "dialogue": candidate["dialogue"]},
             trace,
-            [self._call(run, envelope.task_id, AgentRole.REPAIR, response, prompt)],
+            calls,
         )
 
     # -------------------------------------------------------------- validation
@@ -678,6 +859,37 @@ class OrchestrationService:
             evidence_span_ids=span_ids,
             spec_hash=spec_hash,
             semantic_hash=semantic_hash,
+        )
+
+
+    def _check_blueprint(self, payload: dict[str, Any]) -> None:
+        completion_scenes = [scene for scene in payload["scenes"] if scene["is_completion"]]
+        if len(completion_scenes) != 1:
+            raise ValidationFailure("BLUEPRINT_INVALID", "蓝图必须恰好有一个完成场景。")
+
+    def _check_candidate(self, payload: dict[str, Any]) -> None:
+        """Schema-check the spec and the dialogue profile before either is used."""
+        validate_experience_spec(payload["spec"])
+        validate_dialogue_profile(
+            {
+                "id": "guide_main",
+                "protocol_version": "1.0.0",
+                "profile_version": "1.0.0",
+                "persona": {
+                    "name": payload["dialogue"]["persona_name"],
+                    "role": payload["dialogue"]["persona_role"],
+                },
+                "adaptation_note": payload["dialogue"]["adaptation_note"],
+                "source_scope": sorted(
+                    {span for claim in payload["spec"]["claims"] for span in claim["evidence_span_ids"]}
+                )
+                or ["00000000-0000-4000-8000-000000000000"],
+                "objective_ids": [objective["id"] for objective in payload["spec"]["objectives"]],
+                "hint_policy": payload["dialogue"]["hint_policy"],
+                "max_hint_level": {"none": 0, "gentle": 1, "progressive": 3}[payload["dialogue"]["hint_policy"]],
+                "allowed_actions": ["open_source_card", "highlight_claim", "suggest_hint", "navigate_scene"],
+                "model_policy_ref": "conversation-default",
+            }
         )
 
     async def _snapshot_spans(self, snapshot: SourceSnapshot) -> list[tuple[str, str]]:
@@ -760,9 +972,15 @@ class OrchestrationService:
         return version
 
     async def _record_calls(self, run_id: str, calls: list[ModelCall]) -> None:
+        """Persist calls not yet written. The sink is shared across stages, so
+        re-recording a whole list would duplicate rows."""
+        pending = [call for call in calls if call.id not in self._recorded_calls]
+        if not pending:
+            return
         async with self._uow() as uow:
-            for call in calls:
+            for call in pending:
                 await uow.runs.record_call(call)
+                self._recorded_calls.add(call.id)
             await uow.commit()
 
     def _call(
@@ -815,6 +1033,130 @@ class OrchestrationService:
         if CostStatus.ESTIMATED in statuses:
             return CostStatus.ESTIMATED.value
         return CostStatus.ACTUAL.value
+
+
+
+def _text_slots(draft: dict[str, Any]) -> dict[str, Any]:
+    """The parts of the draft the Builder model is allowed to write."""
+    return {
+        "scenes": [
+            {
+                "id": scene["id"],
+                "title": scene["title"],
+                "text": scene["text"],
+                "task_id": scene["tasks"][0]["id"] if scene["tasks"] else None,
+                "option_ids": [option["id"] for option in scene["tasks"][0].get("options", [])] if scene["tasks"] else [],
+                "sequence_items": [item["label"] for item in scene["tasks"][0].get("items", [])] if scene["tasks"] else [],
+            }
+            for scene in draft["scenes"]
+        ]
+    }
+
+
+def _check_builder_content(draft: dict[str, Any], payload: dict[str, Any]) -> None:
+    expected = {scene["id"] for scene in draft["scenes"]}
+    provided = [scene["id"] for scene in payload["scenes"]]
+    if set(provided) != expected or len(provided) != len(expected):
+        raise ValidationFailure(
+            "BUILDER_SCENE_MISMATCH",
+            "输出必须为每个场景（且仅为这些场景）提供文字。",
+            {"expected": sorted(expected), "provided": sorted(provided)},
+        )
+    for scene in draft["scenes"]:
+        if not scene["tasks"] or scene["tasks"][0]["type"] != "choice":
+            continue
+        option_ids = {option["id"] for option in scene["tasks"][0]["options"]}
+        supplied = next(item for item in payload["scenes"] if item["id"] == scene["id"])["options"]
+        if {option["id"] for option in supplied} != option_ids:
+            raise ValidationFailure(
+                "BUILDER_OPTION_MISMATCH",
+                "选择题选项必须与结构草稿一一对应。",
+                {"scene_id": scene["id"], "expected": sorted(option_ids)},
+            )
+
+
+def _fill_draft(draft: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    import copy
+
+    spec = copy.deepcopy(draft)
+    by_id = {scene["id"]: scene for scene in payload["scenes"]}
+    for scene in spec["scenes"]:
+        text = by_id[scene["id"]]
+        scene["title"] = text["title"].strip() or scene["title"]
+        scene["text"] = text["text"].strip() or scene["text"]
+        if not scene["tasks"]:
+            continue
+        task = scene["tasks"][0]
+        if text["task_label"]:
+            task["label"] = text["task_label"].strip()
+        if text["success"]:
+            task["feedback"]["success"] = text["success"].strip()
+        if text["failure"]:
+            task["feedback"]["failure"] = text["failure"].strip()
+        if text["hints"]:
+            task["hints"] = [hint.strip() for hint in text["hints"] if hint.strip()][:2]
+        if task["type"] == "choice" and text["options"]:
+            provided = {option["id"]: option for option in text["options"]}
+            for option in task["options"]:
+                source = provided.get(option["id"])
+                if source is not None:
+                    option["label"] = source["label"].strip()
+                    option["feedback"] = source["feedback"].strip()
+    return spec
+
+
+def _review_projection(spec: dict[str, Any]) -> dict[str, Any]:
+    """What a reviewer must read: every participant-visible string, plus the
+    claim/question bindings. Styling and asset presentation are excluded."""
+    return {
+        "brief": spec.get("brief"),
+        "objectives": [
+            {"id": objective.get("id"), "description": objective.get("description"), "claim_ids": objective.get("claim_ids")}
+            for objective in spec.get("objectives", [])
+        ],
+        "claims": [
+            {"id": claim.get("id"), "statement": claim.get("statement"), "content_type": claim.get("content_type")}
+            for claim in spec.get("claims", [])
+        ],
+        "scenes": [
+            {
+                "id": scene.get("id"),
+                "title": scene.get("title"),
+                "text": scene.get("text"),
+                "content_type": scene.get("content_type"),
+                "claim_ids": scene.get("claim_ids"),
+                "tasks": [
+                    {
+                        "id": task.get("id"),
+                        "type": task.get("type"),
+                        "label": task.get("label"),
+                        "required": task.get("required"),
+                        "claim_ids": task.get("claim_ids"),
+                        "feedback": task.get("feedback"),
+                        "hints": task.get("hints"),
+                        "options": [
+                            {"label": option.get("label"), "correct": option.get("correct"), "feedback": option.get("feedback")}
+                            for option in task.get("options", [])
+                        ]
+                        if task.get("type") == "choice"
+                        else None,
+                    }
+                    for task in scene.get("tasks", [])
+                ],
+            }
+            for scene in spec.get("scenes", [])
+        ],
+    }
+
+
+def _reject_review_approval(payload: dict[str, Any]) -> None:
+    for finding in payload.get("findings", []):
+        if finding.get("code") in {"CONTENT_APPROVED", "APPROVED", "PUBLISH"}:
+            raise ValidationFailure(
+                "REVIEW_CANNOT_APPROVE",
+                "审校 Agent 不能给出内容批准或发布结论。",
+                {"code": finding.get("code")},
+            )
 
 
 def semantic_projection(spec: dict[str, Any]) -> dict[str, Any]:

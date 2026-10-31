@@ -252,14 +252,14 @@ def candidate_payload() -> dict[str, Any]:
                         "hints": ["回到入口再看一次。"],
                         "options": [
                             {
-                                "id": "opt_right",
+                                "id": "opt_correct",
                                 "label": "用于观察",
                                 "correct": True,
                                 "feedback": "正确。",
                                 "on_success": [],
                             },
                             {
-                                "id": "opt_wrong",
+                                "id": "opt_distractor",
                                 "label": "用于切割",
                                 "correct": False,
                                 "feedback": "工具 X 不用于切割。",
@@ -366,6 +366,34 @@ def review_payload() -> dict[str, Any]:
     }
 
 
+
+def builder_content_payload() -> dict[str, Any]:
+    """Text-only Builder output, keyed by the ids in the deterministic draft."""
+    spec = candidate_payload()["spec"]
+    scenes = []
+    for scene in spec["scenes"]:
+        task = scene["tasks"][0] if scene["tasks"] else None
+        scenes.append(
+            {
+                "id": scene["id"],
+                "title": scene["title"],
+                "text": scene["text"],
+                "task_label": task["label"] if task else None,
+                "success": task["feedback"]["success"] if task else None,
+                "failure": task["feedback"]["failure"] if task else None,
+                "hints": list(task["hints"]) if task and task["hints"] else [],
+                # Option ids must match the structural draft (opt_a/opt_b...).
+                "options": [
+                    {"id": option["id"], "label": option["label"], "feedback": option["feedback"]}
+                    for option in (task.get("options") or [])
+                ]
+                if task
+                else [],
+            }
+        )
+    return {"scenes": scenes, "dialogue": candidate_payload()["dialogue"]}
+
+
 def repair_payload() -> dict[str, Any]:
     return {
         "patches": [
@@ -380,7 +408,7 @@ def scripted(overrides: dict[str, str] | None = None) -> dict[str, str]:
         "coordinator": json.dumps(plan_payload(), ensure_ascii=False),
         "evidence": json.dumps(evidence_payload(), ensure_ascii=False),
         "experience_designer": json.dumps(blueprint_payload(), ensure_ascii=False),
-        "experience_builder": json.dumps(candidate_payload(), ensure_ascii=False),
+        "experience_builder": json.dumps(builder_content_payload(), ensure_ascii=False),
         "review": json.dumps(review_payload(), ensure_ascii=False),
         "repair": json.dumps(repair_payload(), ensure_ascii=False),
     }

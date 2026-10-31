@@ -76,6 +76,7 @@ class AnthropicGatewayProvider:
         price_input_micros_per_token: int | None = None,
         price_output_micros_per_token: int | None = None,
         currency: str = "CNY",
+        disable_thinking: bool = True,
     ) -> None:
         self._base_url = (base_url or "").rstrip("/")
         self._api_key = api_key
@@ -85,6 +86,10 @@ class AnthropicGatewayProvider:
         self._price_in = price_input_micros_per_token
         self._price_out = price_output_micros_per_token
         self._currency = currency
+        # The gateway bills reasoning tokens inside max_tokens. For structured
+        # JSON artifacts the hidden reasoning only causes truncation, so it is
+        # disabled by default and can be re-enabled per deployment.
+        self._disable_thinking = disable_thinking
 
     @property
     def configured(self) -> bool:
@@ -121,6 +126,8 @@ class AnthropicGatewayProvider:
         }
         if stream:
             body["stream"] = True
+        if self._disable_thinking:
+            body["thinking"] = {"type": "disabled"}
         return body
 
     async def complete(

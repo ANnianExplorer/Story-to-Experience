@@ -57,7 +57,7 @@ def parse_pdf(data: bytes) -> ParsedDocument:
     try:
         reader = PdfReader(io.BytesIO(data))
     except Exception as exc:  # pypdf raises several unrelated types
-        raise ValidationFailure("PDF_UNREADABLE", "PDF 无法解析。") from exc
+        raise ValidationFailure("PDF_UNREADABLE", "PDF 无法解析。", {"reason": f"{type(exc).__name__}: {exc}"[:200]}) from exc
     if reader.is_encrypted:
         raise ValidationFailure("PDF_ENCRYPTED", "不接受加密 PDF。")
     if len(reader.pages) > MAX_TEXT_LAYER_PAGES:
