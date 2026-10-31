@@ -1,0 +1,18 @@
+# Python application dependencies (backend). Documentation-only checks live in
+# requirements-docs.txt at the repository root.
+fastapi==0.124.4
+uvicorn==0.33.0
+pydantic==2.12.5
+pydantic-settings==2.13.1
+sqlalchemy[asyncio]==2.0.44
+asyncpg==0.30.0
+aiosqlite==0.21.0
+alembic==1.16.5
+httpx==0.28.1
+python-multipart==0.0.20
+langgraph==1.0.3
+langgraph-checkpoint-sqlite==3.0.1
+jsonschema==4.23.0
+
+# Test dependencies are installed separately so runtime images stay small:
+#   pip install -r server/requirements-test.txt
