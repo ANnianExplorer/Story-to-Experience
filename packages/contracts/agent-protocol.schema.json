@@ -1,0 +1,117 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:story-to-experience:agent-protocol:1.0.0",
+  "title": "AgentProtocol",
+  "description": "Versioned structured handoff between the Coordinator and specialised agents (F10).",
+  "$defs": {
+    "role": {
+      "enum": ["coordinator", "evidence", "experience_designer", "experience_builder", "review", "repair", "guide"]
+    },
+    "envelope": {
+      "type": "object",
+      "properties": {
+        "protocol_version": { "const": "1.0.0" },
+        "agent_id": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "task_id": { "type": "string", "minLength": 1, "maxLength": 36 },
+        "parent_task_id": { "type": ["string", "null"], "maxLength": 36 },
+        "project_id": { "type": "string", "minLength": 1, "maxLength": 36 },
+        "run_id": { "type": "string", "minLength": 1, "maxLength": 36 },
+        "role": { "$ref": "#/$defs/role" },
+        "profile_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "input_refs": { "type": "array", "items": { "type": "string", "maxLength": 200 }, "maxItems": 24 },
+        "input_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+        "allowed_tools": { "type": "array", "items": { "type": "string", "maxLength": 60 }, "maxItems": 8 },
+        "budget_ref": { "type": "string", "maxLength": 120 },
+        "fencing_token": { "type": "integer", "minimum": 0 },
+        "objective": { "type": "string", "minLength": 1, "maxLength": 2000 }
+      },
+      "required": [
+        "protocol_version", "agent_id", "task_id", "parent_task_id", "project_id", "run_id", "role",
+        "profile_version", "input_refs", "input_hash", "allowed_tools", "budget_ref", "fencing_token", "objective"
+      ],
+      "additionalProperties": false
+    },
+    "issue": {
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "maxLength": 60 },
+        "message": { "type": "string", "maxLength": 1000 },
+        "severity": { "enum": ["error", "warning", "info"] },
+        "artifact_ref": { "type": ["string", "null"], "maxLength": 36 },
+        "claim_ids": { "type": "array", "items": { "type": "string", "maxLength": 64 }, "maxItems": 24 }
+      },
+      "required": ["code", "message", "severity", "artifact_ref", "claim_ids"],
+      "additionalProperties": false
+    },
+    "usage": {
+      "type": "object",
+      "properties": {
+        "model_calls": { "type": "integer", "minimum": 0, "maximum": 12 },
+        "input_tokens": { "type": "integer", "minimum": 0 },
+        "output_tokens": { "type": "integer", "minimum": 0 },
+        "cost_status": { "enum": ["actual", "estimated", "unknown"] },
+        "cost_micros": { "type": ["integer", "null"], "minimum": 0 },
+        "currency": { "type": ["string", "null"], "maxLength": 3 }
+      },
+      "required": ["model_calls", "input_tokens", "output_tokens", "cost_status", "cost_micros", "currency"],
+      "additionalProperties": false
+    },
+    "result": {
+      "type": "object",
+      "properties": {
+        "protocol_version": { "const": "1.0.0" },
+        "task_id": { "type": "string", "maxLength": 36 },
+        "agent_id": { "type": "string", "maxLength": 80 },
+        "role": { "$ref": "#/$defs/role" },
+        "status": { "enum": ["succeeded", "failed", "cancelled", "needs_input"] },
+        "artifact_refs": { "type": "array", "items": { "type": "string", "maxLength": 36 }, "maxItems": 8 },
+        "citation_refs": { "type": "array", "items": { "type": "string", "maxLength": 36 }, "maxItems": 60 },
+        "issues": { "type": "array", "items": { "$ref": "#/$defs/issue" }, "maxItems": 40 },
+        "usage": { "$ref": "#/$defs/usage" },
+        "handoff_to": { "type": "array", "items": { "$ref": "#/$defs/role" }, "maxItems": 7 },
+        "reason_code": { "type": ["string", "null"], "maxLength": 60 }
+      },
+      "required": [
+        "protocol_version", "task_id", "agent_id", "role", "status", "artifact_refs", "citation_refs",
+        "issues", "usage", "handoff_to", "reason_code"
+      ],
+      "additionalProperties": false
+    },
+    "plan_task": {
+      "type": "object",
+      "properties": {
+        "task_id": { "type": "string", "maxLength": 36 },
+        "role": { "$ref": "#/$defs/role" },
+        "objective": { "type": "string", "minLength": 1, "maxLength": 2000 },
+        "depends_on": { "type": "array", "items": { "type": "string", "maxLength": 36 }, "maxItems": 24 },
+        "input_refs": { "type": "array", "items": { "type": "string", "maxLength": 200 }, "maxItems": 24 },
+        "allowed_tools": { "type": "array", "items": { "type": "string", "maxLength": 60 }, "maxItems": 8 },
+        "expected_output": { "type": "string", "minLength": 1, "maxLength": 200 }
+      },
+      "required": ["task_id", "role", "objective", "depends_on", "input_refs", "allowed_tools", "expected_output"],
+      "additionalProperties": false
+    },
+    "plan": {
+      "type": "object",
+      "properties": {
+        "protocol_version": { "const": "1.0.0" },
+        "project_id": { "type": "string", "maxLength": 36 },
+        "run_id": { "type": "string", "maxLength": 36 },
+        "tasks": { "type": "array", "items": { "$ref": "#/$defs/plan_task" }, "minItems": 1, "maxItems": 24 },
+        "notes": { "type": "string", "maxLength": 2000 },
+        "plan_hash": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      },
+      "required": ["protocol_version", "project_id", "run_id", "tasks", "notes", "plan_hash"],
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/envelope" },
+    { "$ref": "#/$defs/result" },
+    { "$ref": "#/$defs/plan" },
+    { "$ref": "#/$defs/plan_task" },
+    { "$ref": "#/$defs/issue" },
+    { "$ref": "#/$defs/usage" },
+    { "$ref": "#/$defs/role" }
+  ]
+}

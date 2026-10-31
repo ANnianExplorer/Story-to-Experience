@@ -1,0 +1,15 @@
+{
+  "name": "@xujing/validator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Semantic checks and exhaustive state search over the shared engine.",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "test": "node --test tests/*.test.ts"
+  },
+  "devDependencies": {
+    "@types/node": "24.10.1",
+    "typescript": "5.9.3"
+  }
+}

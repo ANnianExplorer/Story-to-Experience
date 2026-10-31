@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:story-to-experience:dialogue-profile:1.0.0",
+  "title": "DialogueProfile",
+  "description": "Versioned companion config for AI guide / character conversation (F11). Published alongside, not inside, ExperienceSpec 1.0.",
+  "$defs": {
+    "action": {
+      "enum": ["open_source_card", "highlight_claim", "suggest_hint", "navigate_scene", "replay_scene"]
+    },
+    "profile": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$" },
+        "protocol_version": { "const": "1.0.0" },
+        "profile_version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$" },
+        "persona": {
+          "type": "object",
+          "properties": {
+            "name": { "type": "string", "minLength": 1, "maxLength": 60 },
+            "role": { "type": "string", "maxLength": 120 }
+          },
+          "required": ["name", "role"],
+          "additionalProperties": false
+        },
+        "adaptation_note": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "source_scope": { "type": "array", "items": { "type": "string", "maxLength": 36 }, "minItems": 1, "maxItems": 24 },
+        "objective_ids": { "type": "array", "items": { "type": "string", "maxLength": 64 }, "maxItems": 12 },
+        "hint_policy": { "enum": ["none", "gentle", "progressive"] },
+        "max_hint_level": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "allowed_actions": { "type": "array", "items": { "$ref": "#/$defs/action" }, "maxItems": 5, "uniqueItems": true },
+        "model_policy_ref": { "type": "string", "minLength": 1, "maxLength": 120 }
+      },
+      "required": [
+        "id", "protocol_version", "profile_version", "persona", "adaptation_note", "source_scope",
+        "objective_ids", "hint_policy", "max_hint_level", "allowed_actions", "model_policy_ref"
+      ],
+      "additionalProperties": false
+    },
+    "suggested_action": {
+      "type": "object",
+      "properties": {
+        "kind": { "$ref": "#/$defs/action" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "scene_id": { "type": ["string", "null"], "maxLength": 64 },
+        "claim_id": { "type": ["string", "null"], "maxLength": 64 },
+        "level": { "type": ["integer", "null"], "minimum": 0, "maximum": 3 }
+      },
+      "required": ["kind", "label", "scene_id", "claim_id", "level"],
+      "additionalProperties": false
+    },
+    "citation": {
+      "type": "object",
+      "properties": {
+        "span_id": { "type": "string", "maxLength": 36 },
+        "source_id": { "type": "string", "maxLength": 36 },
+        "label": { "type": "string", "maxLength": 120 },
+        "quote": { "type": "string", "maxLength": 800 },
+        "start_cp": { "type": "integer", "minimum": 0 },
+        "end_cp": { "type": "integer", "minimum": 0 },
+        "claim_ids": { "type": "array", "items": { "type": "string", "maxLength": 64 }, "maxItems": 12 }
+      },
+      "required": ["span_id", "source_id", "label", "quote", "start_cp", "end_cp", "claim_ids"],
+      "additionalProperties": false
+    },
+    "turn": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 36 },
+        "session_id": { "type": "string", "maxLength": 36 },
+        "client_turn_id": { "type": "string", "maxLength": 64 },
+        "sequence": { "type": "integer", "minimum": 1 },
+        "status": { "enum": ["queued", "streaming", "succeeded", "failed", "cancelled"] },
+        "user_message": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "partial_text": { "type": "string", "maxLength": 4000 },
+        "final_text": { "type": ["string", "null"], "maxLength": 4000 },
+        "answerability": { "enum": ["answered", "partial", "unknown", "refused", null] },
+        "citations": { "type": "array", "items": { "$ref": "#/$defs/citation" }, "maxItems": 12 },
+        "suggested_actions": { "type": "array", "items": { "$ref": "#/$defs/suggested_action" }, "maxItems": 5 },
+        "cost_status": { "enum": ["actual", "estimated", "unknown"] },
+        "cost_micros": { "type": ["integer", "null"], "minimum": 0 }
+      },
+      "required": [
+        "id", "session_id", "client_turn_id", "sequence", "status", "user_message", "partial_text",
+        "final_text", "answerability", "citations", "suggested_actions", "cost_status", "cost_micros"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "oneOf": [
+    { "$ref": "#/$defs/profile" },
+    { "$ref": "#/$defs/turn" },
+    { "$ref": "#/$defs/citation" },
+    { "$ref": "#/$defs/suggested_action" },
+    { "$ref": "#/$defs/action" }
+  ]
+}
