@@ -81,7 +81,10 @@ body {
 .scene {
   display: grid;
   gap: var(--xj-space-16);
-  padding: 0 var(--xj-space-8) var(--xj-space-32);
+  padding: var(--xj-space-24) var(--xj-space-24) var(--xj-space-32);
+  /* 正文永远压在纸底上：背景装饰再重也不影响可读性。 */
+  background: color-mix(in oklab, var(--xj-color-surface) 88%, transparent);
+  backdrop-filter: blur(1px);
 }
 
 /* 章目：小印 + 细线，替代常见的彩色小标签 */
@@ -135,9 +138,17 @@ body {
 .task {
   display: grid;
   gap: var(--xj-space-12);
+  /* Buttons size to their label; only choice options run full width. */
+  justify-items: start;
   margin-top: var(--xj-space-8);
   padding-top: var(--xj-space-16);
   border-top: 1px solid var(--xj-color-border);
+}
+
+.task button.choice,
+.order-list,
+.task .primary {
+  justify-self: stretch;
 }
 
 .task h3 {

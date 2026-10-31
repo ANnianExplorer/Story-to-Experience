@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client';
 import '../../../packages/ui/tokens.css';
 import '../../../packages/ui/classical.css';
 import './styles.css';
+import './timeline.css';
 
 import { AppShell } from './components/app-shell.tsx';
 import { useWorkbench } from './hooks/use-workbench.ts';

@@ -42,6 +42,9 @@ from server.infrastructure.db.tables import (
 )
 
 
+ACTIVE_STATUS_VALUES = ["queued", "running", "waiting_input"]
+
+
 def _now() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -371,6 +374,38 @@ class EvidenceRepository:
         await self._session.flush()
         return snapshot
 
+    async def list_snapshots(self, project_id: str) -> list[SourceSnapshot]:
+        stmt = (
+            select(SourceSnapshotRow)
+            .where(SourceSnapshotRow.project_id == project_id)
+            .order_by(SourceSnapshotRow.created_at.desc())
+        )
+        snapshots: list[SourceSnapshot] = []
+        for row in (await self._session.execute(stmt)).scalars():
+            payload = row.manifest_json
+            snapshots.append(
+                SourceSnapshot(
+                    id=row.id,
+                    project_id=row.project_id,
+                    sha256=row.sha256,
+                    manifest=SnapshotManifest(
+                        project_id=payload["project_id"],
+                        documents=tuple(
+                            SnapshotManifestEntry(
+                                source_id=entry["source_id"],
+                                sha256=entry["sha256"],
+                                parse_version=entry["parse_version"],
+                                span_hashes=tuple(entry["span_hashes"]),
+                            )
+                            for entry in payload["documents"]
+                        ),
+                        claims=tuple(payload["claims"]),
+                    ),
+                    created_at=_aware(row.created_at),
+                )
+            )
+        return snapshots
+
     async def get_snapshot(self, snapshot_id: str) -> SourceSnapshot | None:
         row = await self._session.get(SourceSnapshotRow, snapshot_id)
         if row is None:
@@ -516,6 +551,42 @@ class RunRepository:
         )
         row = (await self._session.execute(stmt)).scalar_one_or_none()
         return self._run(row) if row else None
+
+    async def stale_active_for_project(self, project_id: str, *, queued_before: datetime, lease_before: datetime) -> Run | None:
+        """An active run that provably has no live worker.
+
+        * ``queued`` with no lease holder and older than ``queued_before``: the
+          process that was supposed to start it died before claiming it.
+        * ``running`` whose lease expired before ``lease_before``: the worker
+          stopped heartbeating.
+
+        A run that is merely slow is never returned: it either holds a live lease
+        or is newer than the threshold.
+        """
+        stmt = (
+            select(RunRow)
+            .where(
+                RunRow.project_id == project_id,
+                RunRow.kind.in_(["generate", "revision"]),
+                RunRow.status.in_(ACTIVE_STATUS_VALUES),
+            )
+            .order_by(RunRow.created_at)
+            .limit(1)
+        )
+        row = (await self._session.execute(stmt)).scalar_one_or_none()
+        if row is None:
+            return None
+        run = self._run(row)
+        if run.status is RunStatus.QUEUED:
+            orphaned = run.lease_owner is None and _aware(row.created_at) is not None and _aware(row.created_at) < queued_before
+        else:
+            expires = _aware(row.lease_expires_at)
+            orphaned = expires is None or expires < lease_before
+        return run if orphaned else None
+
+    async def active_runs(self) -> list[Run]:
+        stmt = select(RunRow).where(RunRow.status.in_(ACTIVE_STATUS_VALUES))
+        return [self._run(row) for row in (await self._session.execute(stmt)).scalars()]
 
     async def append_event(self, run_id: str, event_type: str, payload: dict[str, Any]) -> int:
         # Allocate the sequence atomically in the database. Reading the row and
@@ -665,6 +736,17 @@ class AgentRepository:
                 updated_at=now,
             )
         )
+        await self._session.flush()
+
+    async def fail_task(self, task_id: str, code: str) -> None:
+        row = await self._session.get(AgentTaskRow, task_id)
+        if row is None:
+            return
+        row.status = "failed"
+        result = dict(row.result_json or {})
+        result.setdefault("reason_code", code)
+        row.result_json = result
+        row.updated_at = _now()
         await self._session.flush()
 
     async def mark_running(self, task_id: str) -> None:

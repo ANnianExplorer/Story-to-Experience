@@ -1,0 +1,193 @@
+/* 背景：远山、梅枝、雾、落英。颜色与时长全部来自 Token，不声明颜色字面量。 */
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* 内容层压在背景之上 */
+.player > .player-head,
+.player > .player-grid,
+.player > .player-foot {
+  position: relative;
+  z-index: 1;
+}
+
+/* ---------- 远山 ---------- */
+
+.backdrop-ridge {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  height: 44vh;
+  opacity: 0.9;
+}
+
+.ridge-far {
+  fill: color-mix(in oklab, var(--xj-color-sea) 6%, var(--xj-color-paper-warm));
+}
+
+.ridge-mid {
+  fill: color-mix(in oklab, var(--xj-color-sea) 10%, var(--xj-color-paper-warm));
+}
+
+.ridge-near {
+  fill: color-mix(in oklab, var(--xj-color-sea) 14%, var(--xj-color-paper-warm));
+}
+
+/* ---------- 梅枝 ---------- */
+
+/* 枝条只占右上角：压到正文上会降低可读性，这是不可接受的代价。 */
+.backdrop-branch {
+  position: absolute;
+  right: -10vw;
+  top: -14vh;
+  width: min(62vw, 880px);
+  height: auto;
+  opacity: 0.82;
+}
+
+/* 枝干：墨色实心，浓淡由 opacity 体现笔触 */
+.branch-ink path {
+  fill: color-mix(in oklab, var(--xj-color-ink) 66%, var(--xj-color-paper-warm));
+  opacity: 0.88;
+  transform-origin: top right;
+  animation: branch-grow var(--xj-motion-title) var(--xj-motion-ease) both;
+}
+
+.branch-ink path:first-child {
+  fill: color-mix(in oklab, var(--xj-color-ink) 80%, var(--xj-color-paper-warm));
+}
+
+@keyframes branch-grow {
+  from {
+    opacity: 0;
+    transform: scale(0.86);
+  }
+  to {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+}
+
+.blossom-petal {
+  fill: color-mix(in oklab, var(--xj-color-seal) 42%, var(--xj-color-surface));
+}
+
+.blossom-core {
+  fill: color-mix(in oklab, var(--xj-color-gilded) 78%, var(--xj-color-ink));
+}
+
+.blossom {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: blossom-bloom var(--xj-motion-scene) var(--xj-motion-ease) both;
+}
+
+@keyframes blossom-bloom {
+  from {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* ---------- 雾 ---------- */
+
+.backdrop-mist {
+  position: absolute;
+  left: -25%;
+  width: 150%;
+  height: 26vh;
+  background: radial-gradient(
+    ellipse at center,
+    color-mix(in oklab, var(--xj-color-surface) 62%, transparent) 0%,
+    transparent 70%
+  );
+}
+
+.backdrop-mist-a {
+  bottom: 30vh;
+  animation: mist-drift 58s linear infinite alternate;
+}
+
+.backdrop-mist-b {
+  bottom: 10vh;
+  opacity: 0.6;
+  animation: mist-drift 74s linear infinite alternate-reverse;
+}
+
+@keyframes mist-drift {
+  from { transform: translateX(-3%); }
+  to { transform: translateX(3%); }
+}
+
+/* ---------- 落英 ---------- */
+
+.backdrop-petals {
+  position: absolute;
+  inset: 0;
+}
+
+.petal {
+  position: absolute;
+  top: -6vh;
+  border-radius: 62% 38% 55% 45% / 58% 62% 38% 42%;
+  background: color-mix(in oklab, var(--xj-color-seal) 30%, var(--xj-color-paper-warm));
+  opacity: 0;
+  animation-name: petal-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes petal-fall {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  10% {
+    opacity: 0.55;
+  }
+  90% {
+    opacity: 0.35;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--drift, 40px), 106vh, 0) rotate(var(--spin, 300deg));
+  }
+}
+
+/* 减少动效：枝、花、雾、落英全部静止，画面仍完整可读。 */
+@media (prefers-reduced-motion: reduce) {
+  .branch-ink path,
+  .blossom,
+  .backdrop-mist,
+  .petal {
+    animation: none;
+  }
+
+  .petal {
+    display: none;
+  }
+}
+
+@media (max-width: 900px) {
+  .backdrop-branch {
+    width: 104vw;
+    top: -10vh;
+    right: -32vw;
+    opacity: 0.5;
+  }
+
+  .backdrop-ridge {
+    height: 30vh;
+  }
+}

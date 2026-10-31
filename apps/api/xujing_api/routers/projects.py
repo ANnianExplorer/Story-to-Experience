@@ -191,6 +191,39 @@ async def get_spans(source_id: str, request: Request, actor: ActorDep, evidence:
     )
 
 
+@router.post("/projects/{project_id}/source-snapshots/{snapshot_id}/extract-claims", status_code=201)
+async def extract_claims(
+    project_id: str, snapshot_id: str, request: Request, actor: ActorDep
+) -> dict[str, Any]:
+    """Let the Evidence agent propose facts so the creator does not type them.
+
+    The result is a *draft*: claims are ordinary project claims the creator can
+    still correct, and content approval remains a separate human step.
+    """
+    from server.application.extraction import ClaimExtractionService
+
+    service = ClaimExtractionService(request.app.state.uow_factory, request.app.state.provider)
+    result = await service.extract_and_save(actor.id, project_id, snapshot_id)
+    return envelope(
+        {
+            "claims": [
+                {
+                    "statement": claim.statement,
+                    "content_type": claim.content_type,
+                    "evidence_span_ids": list(claim.evidence_span_ids),
+                    "qualifier": claim.qualifier,
+                }
+                for claim in result.claims
+            ],
+            "gaps": list(result.gaps),
+            "ordering_facts": list(result.ordering_facts),
+            "model": result.model,
+            "cost_status": result.cost_status,
+        },
+        request,
+    )
+
+
 @router.get("/projects/{project_id}/claims")
 async def get_claims(project_id: str, request: Request, actor: ActorDep, evidence: EvidenceDep) -> dict[str, Any]:
     claims = await evidence.claims(actor.id, project_id)
@@ -217,6 +250,24 @@ async def add_claims(
     claims = await evidence.add_claims(actor.id, project_id, [claim.model_dump() for claim in body.claims])
     return envelope(
         [{"id": claim.id, "revision": claim.revision, "content_type": claim.content_type} for claim in claims],
+        request,
+    )
+
+
+@router.get("/projects/{project_id}/source-snapshots")
+async def list_snapshots(
+    project_id: str, request: Request, actor: ActorDep, evidence: EvidenceDep
+) -> dict[str, Any]:
+    snapshots = await evidence.snapshots(actor.id, project_id)
+    return envelope(
+        [
+            {
+                "id": snapshot.id,
+                "sha256": snapshot.sha256,
+                "created_at": snapshot.created_at.isoformat() if snapshot.created_at else None,
+            }
+            for snapshot in snapshots
+        ],
         request,
     )
 

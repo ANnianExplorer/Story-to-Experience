@@ -6,6 +6,7 @@
  * buttons as a non-drag alternative (F04-R04).
  */
 import React, { useMemo, useState } from 'react';
+import { AnimatePresence, m, useReducedMotion } from 'motion/react';
 
 import type { ActionInput, PlayerSession } from '../lib/session.ts';
 
@@ -21,6 +22,7 @@ export function SceneView({ session, onAction, onHint, hint, onReplay }: SceneVi
   const scene = session.spec.scenes.find((item) => item.id === session.state.scene_id);
   const [order, setOrder] = useState<string[] | null>(null);
   const [showSources, setShowSources] = useState(false);
+  const reduceMotion = useReducedMotion();
   const claimsById = useMemo(() => new Map(session.spec.claims.map((claim) => [claim.id, claim])), [session.spec.claims]);
 
   if (!scene) {
@@ -49,7 +51,16 @@ export function SceneView({ session, onAction, onHint, hint, onReplay }: SceneVi
   };
 
   return (
-    <section className="scene" aria-labelledby="scene-title">
+    <AnimatePresence mode="wait" initial={false}>
+      <m.section
+        key={scene.id}
+        className="scene"
+        aria-labelledby="scene-title"
+        initial={{ opacity: 0, y: reduceMotion ? 0 : 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: reduceMotion ? 0 : -10 }}
+        transition={{ duration: reduceMotion ? 0 : 0.36, ease: [0.22, 1, 0.36, 1] }}
+      >
       <div className="chapter-row">
         <span className="xj-seal" aria-hidden="true">
           {String(session.spec.scenes.findIndex((item) => item.id === scene.id) + 1).padStart(2, '0')}
@@ -190,6 +201,7 @@ export function SceneView({ session, onAction, onHint, hint, onReplay }: SceneVi
           </button>
         </>
       )}
-    </section>
+      </m.section>
+    </AnimatePresence>
   );
 }

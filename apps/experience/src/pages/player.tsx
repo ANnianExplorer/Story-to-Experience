@@ -10,6 +10,7 @@ import React, { useEffect, useState } from 'react';
 import type { ExperienceSpec } from '../../../../packages/contracts/index.ts';
 import type { DialogueProfile } from '../../../../packages/contracts/index.ts';
 import { GuidePanel } from '../components/guide-panel.tsx';
+import { InkBackdrop } from '../components/ink-backdrop.tsx';
 import { SceneView } from '../components/scene-view.tsx';
 import { PlayerClient, PlayerError } from '../lib/player-api.ts';
 import { currentScene, hintFor, openSession, reduceSession, type ActionInput, type PlayerSession } from '../lib/session.ts';
@@ -86,6 +87,7 @@ export function PlayerPage() {
 
   return (
     <div className="player">
+      <InkBackdrop seed={session.spec.scenes.findIndex((item) => item.id === session.state.scene_id) + 1} />
       <header className="player-head">
         <p className="brand-line">叙境 · 文化体验</p>
         <p className="meta">固定版本 {versionId?.slice(0, 8)} · 动画与出处不影响任务判定</p>

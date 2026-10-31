@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { finalMessageFromTurn, ApiError, XujingClient } from '../src/lib/api.ts';
-import { formatCost, gates, initialState, reduce, type WorkbenchState } from '../src/lib/workbench-state.ts';
+import { formatCost, gates, GATE_COPY, initialState, reduce, type WorkbenchState } from '../src/lib/workbench-state.ts';
 
 function stateWith(overrides: Partial<WorkbenchState>): WorkbenchState {
   return { ...initialState, ...overrides };
@@ -60,7 +60,7 @@ test('succeeded without a completed event is treated as incomplete', () => {
 test('generation stays blocked until evidence is frozen', () => {
   const withoutEvidence = stateWith({ sourceId: 'src' });
   assert.equal(gates(withoutEvidence).canFreeze, false);
-  assert.ok(gates(withoutEvidence).reasons.includes('至少需要一条绑定证据的事实'));
+  assert.ok(gates(withoutEvidence).reasons.includes(GATE_COPY.noClaims));
 
   const withClaim = stateWith({
     sourceId: 'src',
@@ -122,7 +122,7 @@ test('gate reasons name the step that is actually missing', () => {
 
   // Missing claims is reported first, because it blocks the freeze step.
   const noClaims = stateWith({ sourceId: 'src' });
-  assert.deepEqual(gates(noClaims).reasons, ['还没有标为事实的证据片段']);
+  assert.deepEqual(gates(noClaims).reasons, [GATE_COPY.noClaims]);
 });
 
 test('snapshot state is recoverable from the server on reload', () => {

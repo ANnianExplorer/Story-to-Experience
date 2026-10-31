@@ -13,6 +13,12 @@ from server.domain.runs import Run, RunStatus, Stage, utcnow
 
 GENERATION_BUDGET_CALLS = 12
 
+# A queued run with no lease holder older than this is presumed orphaned: a
+# healthy worker claims within seconds of submission.
+QUEUED_ORPHAN_AFTER = timedelta(minutes=3)
+# A running run whose lease expired this long ago lost its worker.
+LEASE_ORPHAN_GRACE = timedelta(minutes=2)
+
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
@@ -62,7 +68,30 @@ class RunService:
 
             active = await uow.runs.active_for_project(project_id)
             if active is not None:
-                raise Conflict("ACTIVE_RUN", "项目已有进行中的生成任务。", object_id=active.id)
+                # A run with no live worker must not lock the project forever:
+                # a crashed or restarted API process would otherwise leave the
+                # creator permanently unable to generate (ACTIVE_RUN).
+                now = utcnow()
+                stale = await uow.runs.stale_active_for_project(
+                    project_id,
+                    queued_before=now - QUEUED_ORPHAN_AFTER,
+                    lease_before=now - LEASE_ORPHAN_GRACE,
+                )
+                if stale is not None and stale.id == active.id:
+                    active.status = RunStatus.FAILED
+                    active.error_code = "RUN_ORPHANED"
+                    active.finished_at = now
+                    active.lease_owner = None
+                    active.lease_expires_at = None
+                    await uow.runs.save(active)
+                    await uow.runs.append_event(
+                        active.id,
+                        "terminal",
+                        {"status": "failed", "error_code": "RUN_ORPHANED", "reason": "no live worker"},
+                    )
+                    await uow.commit()
+                else:
+                    raise Conflict("ACTIVE_RUN", "项目已有进行中的生成任务。", object_id=active.id)
 
             snapshot = await uow.evidence.get_snapshot(source_snapshot_id)
             if snapshot is None or snapshot.project_id != project_id:
@@ -92,6 +121,41 @@ class RunService:
             await uow.runs.append_event(run.id, "queued", {"stage": run.stage.value})
             await uow.commit()
         return RunSubmission(run_id=run.id, created=True)
+
+    async def reap_orphans(self) -> int:
+        """Fail active runs whose worker is gone. Called at startup.
+
+        Safe to run concurrently: each run is claimed with a row lock and its
+        status is re-checked, so a run that started meanwhile is left alone.
+        """
+        now = utcnow()
+        reaped = 0
+        async with self._uow() as uow:
+            candidates = await uow.runs.active_runs()
+        for candidate in candidates:
+            async with self._uow() as uow:
+                run = await uow.runs.get_for_update(candidate.id)
+                if run is None or run.status not in (RunStatus.QUEUED, RunStatus.RUNNING):
+                    continue
+                stale = await uow.runs.stale_active_for_project(
+                    run.project_id,
+                    queued_before=now - QUEUED_ORPHAN_AFTER,
+                    lease_before=now - LEASE_ORPHAN_GRACE,
+                )
+                if stale is None or stale.id != run.id:
+                    continue
+                run.status = RunStatus.FAILED
+                run.error_code = "RUN_ORPHANED"
+                run.finished_at = now
+                run.lease_owner = None
+                run.lease_expires_at = None
+                await uow.runs.save(run)
+                await uow.runs.append_event(
+                    run.id, "terminal", {"status": "failed", "error_code": "RUN_ORPHANED", "reason": "startup reap"}
+                )
+                await uow.commit()
+                reaped += 1
+        return reaped
 
     async def get(self, actor_id: str, run_id: str) -> Run:
         async with self._uow() as uow:

@@ -14,6 +14,8 @@ CLASSICAL_PATH = ROOT / 'packages/ui/classical.css'
 APP_STYLES = (
     ROOT / 'apps/workbench/src/styles.css',
     ROOT / 'apps/experience/src/styles.css',
+    ROOT / 'apps/experience/src/backdrop.css',
+    ROOT / 'apps/workbench/src/timeline.css',
 )
 REQUIRED_PAIRS = {
     ('ink', 'paper', 4.5), ('ink', 'surface', 4.5),

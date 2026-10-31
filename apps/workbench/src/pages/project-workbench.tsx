@@ -38,6 +38,8 @@ export function ProjectPage({ scope, projectId }: { scope: WorkbenchScope; proje
         const spans = await client.listSpans(ready.source_id);
         dispatch({ type: 'material_parsed', sourceId: ready.source_id, spans });
       }
+      const snapshots = await client.listSnapshots(projectId);
+      dispatch({ type: 'state_restored', snapshotId: snapshots[0]?.id ?? null });
       const versions = await client.listVersions(projectId);
       if (versions.length > 0) {
         const head = versions[0];

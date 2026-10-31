@@ -6,10 +6,11 @@
  */
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
-import type { AgentTaskView, RunSnapshot } from '../lib/api.ts';
+import type { RunSnapshot } from '../lib/api.ts';
 import { formatCost, gates } from '../lib/workbench-state.ts';
 import { client, type WorkbenchScope } from '../hooks/use-workbench.ts';
-import { Count, Field, Panel, StatusPill } from './primitives.tsx';
+import { Field, Panel } from './primitives.tsx';
+import { AgentTimeline } from './agent-timeline.tsx';
 
 function queuedSnapshot(runId: string): RunSnapshot {
   return {
@@ -34,14 +35,16 @@ export function RunPanel({ scope }: { scope: WorkbenchScope }) {
       const snapshot = await client.getRun(runId);
       dispatch({ type: 'run_updated', run: snapshot });
       const trace = await client.listAgentTasks(runId);
-      dispatch({ type: 'agent_tasks', tasks: trace.tasks });
+      dispatch({ type: 'agent_tasks', tasks: trace.tasks, planNotes: trace.plan?.notes ?? null });
       if (snapshot.status === 'succeeded' && state.project) {
         const versions = await client.listVersions(state.project.id);
         const head = versions[0];
         if (head) dispatch({ type: 'candidate_ready', versions, selectedVersionId: head.id });
       }
       if (['queued', 'running', 'waiting_input'].includes(snapshot.status)) {
-        pollRef.current = window.setTimeout(() => void poll(runId), 1500);
+        // Short interval: sub-tasks are seconds apart and the user should see
+        // each state change, not a single jump at the end.
+        pollRef.current = window.setTimeout(() => void poll(runId), 1200);
       }
     },
     [dispatch, state.project],
@@ -116,26 +119,7 @@ export function RunPanel({ scope }: { scope: WorkbenchScope }) {
           )}
         </dl>
       )}
-      <h3>
-        Agent 子任务 <Count value={state.agentTasks.length} />
-      </h3>
-      <ol className="trace">
-        {state.agentTasks.map((task: AgentTaskView) => (
-          <li key={task.task_id}>
-            <div className="trace-head">
-              <strong>{task.role}</strong>
-              <StatusPill tone={task.status === 'succeeded' ? 'ok' : task.status === 'failed' ? 'bad' : 'neutral'}>
-                {task.status}
-              </StatusPill>
-            </div>
-            <p>{task.envelope.objective}</p>
-            <p className="meta">
-              工具：{task.envelope.allowed_tools.join('、')} · 调用 {task.usage.model_calls ?? 0} 次 ·{' '}
-              {task.usage.cost_status ?? 'unknown'}
-            </p>
-          </li>
-        ))}
-      </ol>
+      <AgentTimeline run={state.run} tasks={state.agentTasks} planNotes={state.planNotes} />
     </Panel>
   );
 }

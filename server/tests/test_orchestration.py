@@ -461,3 +461,142 @@ async def test_stale_worker_cannot_mark_a_reclaimed_run_failed(uow_factory, blob
     assert run is not None
     assert run.status is RunStatus.RUNNING, "the newer owner's run must stay running"
     assert run.lease_owner == "worker-b"
+
+
+@pytest.mark.simulated
+async def test_orphaned_queued_run_does_not_block_new_generation(uow_factory, blob_store):
+    """A crashed process must not lock the project's single active-task slot."""
+    from datetime import timedelta
+
+    from server.application.runs import RunService
+    from server.domain.runs import RunStatus, Stage, utcnow
+    from server.domain.shared.ids import new_id
+    from server.infrastructure.db.tables import RunRow
+
+    project, _snapshot, _spans, snapshot = await seed_project(uow_factory, blob_store)
+    runs = RunService(uow_factory)
+    submission = await runs.submit_generation(
+        ALICE,
+        project.id,
+        source_snapshot_id=snapshot.id,
+        brief_revision=project.brief_revision,
+        idempotency_key="orphan-1",
+    )
+    # Backdate the queued run as if its process died minutes ago.
+    async with uow_factory() as uow:
+        row = await uow.session.get(RunRow, submission.run_id)
+        assert row is not None
+        row.created_at = utcnow() - timedelta(minutes=10)
+        await uow.commit()
+
+    # The next submission reaps it instead of returning ACTIVE_RUN forever.
+    follow_up = await runs.submit_generation(
+        ALICE,
+        project.id,
+        source_snapshot_id=snapshot.id,
+        brief_revision=project.brief_revision,
+        idempotency_key="orphan-2",
+    )
+    assert follow_up.created is True
+    async with uow_factory() as uow:
+        old = await uow.runs.get(submission.run_id)
+        events = await uow.runs.events_since(submission.run_id, 0)
+    assert old is not None and old.status is RunStatus.FAILED
+    assert old.error_code == "RUN_ORPHANED"
+    assert any(event["type"] == "terminal" for event in events)
+
+
+@pytest.mark.simulated
+async def test_startup_reap_fails_orphans_but_keeps_live_runs(uow_factory, blob_store):
+    """reap_orphans() must not touch a run that is still leased."""
+    from server.application.runs import RunService
+
+    project, _snapshot, _spans, snapshot = await seed_project(uow_factory, blob_store)
+    runs = RunService(uow_factory)
+    fresh = await runs.submit_generation(
+        ALICE,
+        project.id,
+        source_snapshot_id=snapshot.id,
+        brief_revision=project.brief_revision,
+        idempotency_key="reap-1",
+    )
+    # A just-submitted queued run is younger than the orphan threshold.
+    reaped = await runs.reap_orphans()
+    assert reaped == 0
+    async with uow_factory() as uow:
+        run = await uow.runs.get(fresh.run_id)
+    assert run is not None and run.status.value in {"queued", "running"}
+
+
+@pytest.mark.simulated
+async def test_active_run_still_blocks_a_second_generation(uow_factory, blob_store):
+    """The anti-orphan logic must not weaken the one-active-run rule."""
+    from server.application.runs import RunService
+    from server.domain.shared.errors import Conflict
+
+    project, _snapshot, _spans, snapshot = await seed_project(uow_factory, blob_store)
+    runs = RunService(uow_factory)
+    await runs.submit_generation(
+        ALICE,
+        project.id,
+        source_snapshot_id=snapshot.id,
+        brief_revision=project.brief_revision,
+        idempotency_key="active-1",
+    )
+    with pytest.raises(Conflict) as error:
+        await runs.submit_generation(
+            ALICE,
+            project.id,
+            source_snapshot_id=snapshot.id,
+            brief_revision=project.brief_revision,
+            idempotency_key="active-2",
+        )
+    assert error.value.code == "ACTIVE_RUN"
+
+
+@pytest.mark.simulated
+async def test_claims_are_extracted_automatically_from_a_snapshot(uow_factory, blob_store, scripted_provider):
+    """The creator should not have to type each fact by hand (F02)."""
+    from server.application.extraction import ClaimExtractionService
+
+    project, _document, _spans, snapshot = await seed_project(uow_factory, blob_store)
+    service = ClaimExtractionService(uow_factory, scripted_provider)
+    result = await service.extract(ALICE, project.id, snapshot.id)
+    assert len(result.claims) == 3
+    assert all(claim.evidence_span_ids for claim in result.claims)
+    assert result.gaps == ("资料未规定 A 与 B 的先后顺序。",)
+
+    saved = await service.extract_and_save(ALICE, project.id, snapshot.id)
+    assert saved.claims
+    async with uow_factory() as uow:
+        claims = await uow.evidence.latest_claims(project.id)
+    # seed_project already recorded the same three statements, so nothing is duplicated.
+    assert len(claims) == 3
+
+
+@pytest.mark.simulated
+async def test_extraction_drops_invented_span_ids(uow_factory, blob_store, node_validator):
+    """A span id the model made up must never become evidence."""
+    from server.application.extraction import ClaimExtractionService
+    from server.tests.providers import ScriptedProvider
+
+    payload = script.evidence_payload()
+    for claim in payload["claims"]:
+        claim["evidence_span_ids"] = ["99999999-0000-4000-8000-000000000000"]
+    provider = ScriptedProvider(script.scripted({"evidence": __import__("json").dumps(payload, ensure_ascii=False)}))
+    project, _document, _spans, snapshot = await seed_project(uow_factory, blob_store)
+    service = ClaimExtractionService(uow_factory, provider)
+    result = await service.extract(ALICE, project.id, snapshot.id)
+    assert result.claims, "claims are still proposed"
+    assert all(claim.evidence_span_ids == () for claim in result.claims), "invented spans are stripped"
+
+
+@pytest.mark.simulated
+async def test_extraction_requires_project_ownership(uow_factory, blob_store, scripted_provider):
+    from server.application.extraction import ClaimExtractionService
+    from server.domain.shared.errors import NotFound
+
+    project, _document, _spans, snapshot = await seed_project(uow_factory, blob_store)
+    service = ClaimExtractionService(uow_factory, scripted_provider)
+    with pytest.raises(NotFound):
+        await service.extract("22222222-2222-4222-8222-222222222222", project.id, snapshot.id)

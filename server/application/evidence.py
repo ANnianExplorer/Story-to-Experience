@@ -252,6 +252,15 @@ class EvidenceService:
             await uow.commit()
         return snapshot
 
+    async def snapshots(self, actor_id: str, project_id: str) -> list[SourceSnapshot]:
+        """List frozen snapshots so a reloaded client can restore its frozen state."""
+        async with self._uow() as uow:
+            project = await uow.projects.get(project_id)
+            if project is None:
+                raise NotFound(object_id=project_id)
+            project.assert_owned_by(actor_id)
+            return await uow.evidence.list_snapshots(project_id)
+
     async def snapshot_for_generation(self, project_id: str, snapshot_id: str) -> SourceSnapshot:
         async with self._uow() as uow:
             snapshot = await uow.evidence.get_snapshot(snapshot_id)

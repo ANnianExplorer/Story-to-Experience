@@ -5,6 +5,7 @@ implementations and wires them together.
 """
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator
@@ -21,6 +22,7 @@ from xujing_api.core.identity import DevIdentity
 from xujing_api.routers import conversations, delivery, meta, projects, runs
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
+logger = logging.getLogger("xujing.startup")
 
 
 def build_provider(settings: Settings) -> Any:
@@ -49,7 +51,18 @@ def create_app(
         uow_factory = make_uow_factory(engine)
 
     @asynccontextmanager
-    async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        # A process that died mid-run leaves its run active, which blocks the
+        # project's single active-task slot. Reaping at startup keeps a restart
+        # from requiring manual database cleanup.
+        try:
+            from server.application.runs import RunService
+
+            reaped = await RunService(app.state.uow_factory).reap_orphans()
+            if reaped:
+                logger.info("reaped %d orphaned run(s) at startup", reaped)
+        except Exception:  # never block startup on housekeeping
+            logger.exception("orphan reap failed at startup")
         yield
         if engine is not None:
             await engine.dispose()

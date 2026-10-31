@@ -52,6 +52,8 @@ export interface Project {
 
 export interface SourceSummary {
   source_id: string;
+  /** The listing endpoint includes the title; the upload response does not. */
+  title?: string;
   parse_status: string;
   sha256: string;
   error_code: string | null;
@@ -159,16 +161,24 @@ export class XujingClient {
     this.fetchImpl = options.fetchImpl ?? globalThis.fetch.bind(globalThis);
   }
 
-  private async request<T>(method: string, path: string, body?: unknown, headers: Record<string, string> = {}): Promise<T> {
+  private async request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    headers: Record<string, string> = {},
+    multipart = false,
+  ): Promise<T> {
+    const isForm = multipart && body instanceof FormData;
     const response = await this.fetchImpl(`${this.baseUrl}${path}`, {
       method,
       headers: {
         accept: 'application/json',
-        ...(body === undefined ? {} : { 'content-type': 'application/json' }),
+        // A FormData body must let the browser set the boundary itself.
+        ...(body === undefined || isForm ? {} : { 'content-type': 'application/json' }),
         ...(this.actorId ? { 'x-actor-id': this.actorId } : {}),
         ...headers,
       },
-      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(body === undefined ? {} : { body: isForm ? (body as FormData) : JSON.stringify(body) }),
     });
     if (response.status === 204) return undefined as T;
     const text = await response.text();
@@ -228,7 +238,22 @@ export class XujingClient {
     return this.request<SourceSummary>('POST', `/api/v1/projects/${projectId}/sources/text`, input);
   }
 
-  listSources(projectId: string): Promise<{ source_id: string; title: string; parse_status: string }[]> {
+  uploadFile(projectId: string, file: File, licenseNote: string): Promise<SourceSummary> {
+    // multipart: the browser streams the bytes; the server sniffs the real type.
+    const body = new FormData();
+    body.append('file', file);
+    body.append('license_note', licenseNote);
+    return this.request<SourceSummary>('POST', `/api/v1/projects/${projectId}/sources`, body, undefined, true);
+  }
+
+  extractClaims(
+    projectId: string,
+    snapshotId: string,
+  ): Promise<{ claims: { statement: string; content_type: string }[]; gaps: string[]; cost_status: string }> {
+    return this.request('POST', `/api/v1/projects/${projectId}/source-snapshots/${snapshotId}/extract-claims`);
+  }
+
+  listSources(projectId: string): Promise<(SourceSummary & { title: string })[]> {
     return this.request('GET', `/api/v1/projects/${projectId}/sources`);
   }
 
@@ -245,6 +270,10 @@ export class XujingClient {
     claims: { statement: string; content_type: Claim['content_type']; evidence_span_ids: string[] }[],
   ): Promise<{ id: string; revision: number }[]> {
     return this.request('POST', `/api/v1/projects/${projectId}/claims`, { claims });
+  }
+
+  listSnapshots(projectId: string): Promise<{ id: string; sha256: string; created_at: string | null }[]> {
+    return this.request('GET', `/api/v1/projects/${projectId}/source-snapshots`);
   }
 
   createSnapshot(projectId: string, sourceIds: string[]): Promise<{ id: string; sha256: string }> {
@@ -273,7 +302,9 @@ export class XujingClient {
     return this.request<RunSnapshot>('GET', `/api/v1/runs/${runId}`);
   }
 
-  listAgentTasks(runId: string): Promise<{ plan: { notes: string; tasks: unknown[] } | null; tasks: AgentTaskView[] }> {
+  listAgentTasks(
+    runId: string,
+  ): Promise<{ plan: { notes: string; tasks: unknown[] } | null; tasks: AgentTaskView[] }> {
     return this.request('GET', `/api/v1/runs/${runId}/agent-tasks`);
   }
 

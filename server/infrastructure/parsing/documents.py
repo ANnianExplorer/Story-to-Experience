@@ -1,8 +1,13 @@
-"""Isolated parse step: text and text-layer PDFs only (F02-R01/R02).
+"""Isolated parse step: text, text-layer PDFs and still images (F02-R01/R02).
 
 Never OCRs, never fetches URLs, never trusts a file extension. A PDF without an
 extractable text layer fails with NO_EXTRACTABLE_TEXT instead of producing an
 empty ready document.
+
+Images become *visual material*: the bytes stay in the content-addressed store and
+are described by the model on demand (``describe_image``). The parser only proves
+the file is a real PNG/JPEG/WebP of acceptable size, so a disguised script fails
+here rather than reaching a decoder elsewhere.
 """
 from __future__ import annotations
 
@@ -15,7 +20,15 @@ from server.domain.shared.text import normalize_text
 PDF_MAGIC = b"%PDF-"
 MAX_TEXT_BYTES = 2 * 1024 * 1024
 MAX_PDF_BYTES = 20 * 1024 * 1024
+MAX_IMAGE_BYTES = 8 * 1024 * 1024
+MAX_IMAGE_PIXELS = 40_000_000
 MAX_TEXT_LAYER_PAGES = 200
+
+# Signature -> (mime, decoder). SVG is deliberately absent: it is executable.
+IMAGE_SIGNATURES = (
+    (b"\x89PNG\r\n\x1a\n", "image/png"),
+    (b"\xff\xd8\xff", "image/jpeg"),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,8 +43,15 @@ def sniff_mime(data: bytes) -> str:
         return "application/pdf"
     if data.startswith(b"<") or b"<html" in data[:512].lower():
         raise UnsupportedMedia("不接受 HTML/XML 内容，请上传纯文本或文本 PDF。")
-    if data.startswith(b"\x00\x00\x01\x00") or data.startswith(b"\x89PNG") or data.startswith(b"\xff\xd8"):
-        raise UnsupportedMedia("图片需走图片资料通道，当前仅接受纯文本与文本 PDF。")
+    for signature, mime in IMAGE_SIGNATURES:
+        if data.startswith(signature):
+            return mime
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data.startswith(b"\x00\x00\x01\x00"):
+        raise UnsupportedMedia("不接受图标/可执行容器，请上传 PNG/JPEG/WebP 图片。")
+    if data.lstrip()[:5].lower().startswith(b"<svg") or b"<svg" in data[:512].lower():
+        raise UnsupportedMedia("不接受 SVG（可执行脚本），请上传 PNG/JPEG/WebP。")
     return "text/plain"
 
 
@@ -77,10 +97,61 @@ def parse_pdf(data: bytes) -> ParsedDocument:
     return ParsedDocument(text=normalize_text(text), mime_type="application/pdf", page_count=len(reader.pages))
 
 
+def parse_image(data: bytes, mime: str) -> ParsedDocument:
+    """Validate a real raster image; text stays empty because vision reads it."""
+    if len(data) > MAX_IMAGE_BYTES:
+        raise ValidationFailure("SOURCE_TOO_LARGE", "图片超过 8 MB 上限。", {"limit": MAX_IMAGE_BYTES})
+    if mime == "image/png":
+        width, height = _png_size(data)
+    elif mime == "image/jpeg":
+        width, height = _jpeg_size(data)
+    else:
+        width, height = None, None
+    if width and height and width * height > MAX_IMAGE_PIXELS:
+        raise ValidationFailure(
+            "IMAGE_TOO_LARGE",
+            "图片像素过多，请压缩后再上传。",
+            {"width": width, "height": height, "limit": MAX_IMAGE_PIXELS},
+        )
+    return ParsedDocument(text="", mime_type=mime, page_count=0)
+
+
+def _png_size(data: bytes) -> tuple[int, int]:
+    # IHDR is the first chunk: width/height are big-endian at offsets 16..24.
+    if len(data) < 24 or data[12:16] != b"IHDR":
+        raise ValidationFailure("IMAGE_CORRUPT", "PNG 头不完整。")
+    return int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big")
+
+
+def _jpeg_size(data: bytes) -> tuple[int, int]:
+    index = 2
+    while index < len(data) - 9:
+        if data[index] != 0xFF:
+            index += 1
+            continue
+        marker = data[index + 1]
+        if marker in (0xC0, 0xC1, 0xC2, 0xC3):
+            height = int.from_bytes(data[index + 5 : index + 7], "big")
+            width = int.from_bytes(data[index + 7 : index + 9], "big")
+            return width, height
+        length = int.from_bytes(data[index + 2 : index + 4], "big")
+        index += 2 + max(length, 2)
+    raise ValidationFailure("IMAGE_CORRUPT", "JPEG 尺寸信息缺失。")
+
+
 def parse_source(data: bytes, declared_content_type: str | None) -> ParsedDocument:
     mime = sniff_mime(data)
-    if declared_content_type and declared_content_type not in {"text/plain", "application/pdf", "text/markdown"}:
+    if declared_content_type and declared_content_type not in {
+        "text/plain",
+        "application/pdf",
+        "text/markdown",
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+    }:
         raise UnsupportedMedia(f"不支持的内容类型：{declared_content_type}。")
     if mime == "application/pdf":
         return parse_pdf(data)
+    if mime.startswith("image/"):
+        return parse_image(data, mime)
     return ParsedDocument(text=normalize_text(decode_text(data)), mime_type="text/plain", page_count=0)

@@ -605,3 +605,39 @@ button.link {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---------- 资料列表与缺口 ---------- */
+
+.source-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--xj-space-4);
+}
+
+.source-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--xj-space-8);
+  padding: var(--xj-space-4) 0;
+  border-bottom: 1px dotted var(--xj-color-border);
+}
+
+.gaps {
+  padding: var(--xj-space-12);
+  border-left: 2px solid var(--xj-color-warning);
+  background: var(--xj-color-warning-soft);
+}
+
+.gaps ul {
+  margin: var(--xj-space-4) 0 0;
+  padding-left: var(--xj-space-16);
+  font-size: var(--xj-font-meta);
+  color: var(--xj-color-warning);
+}
+
+.gaps .xj-kicker {
+  color: var(--xj-color-warning);
+}

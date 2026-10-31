@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from typing import Any, AsyncIterator, Protocol, Sequence
 
+from datetime import datetime
+
 from server.domain.agents import AgentResult, AgentTaskEnvelope, Plan
 from server.domain.evidence import Claim, SourceDocument, SourceSnapshot, SourceSpan
 from server.domain.projects import Brief, BriefRevision, Project
@@ -51,6 +53,8 @@ class EvidenceRepository(Protocol):
 
     async def get_snapshot(self, snapshot_id: str) -> SourceSnapshot | None: ...
 
+    async def list_snapshots(self, project_id: str) -> list[SourceSnapshot]: ...
+
 
 class RunRepository(Protocol):
     async def create(self, run: Run) -> Run: ...
@@ -60,6 +64,12 @@ class RunRepository(Protocol):
     async def save(self, run: Run) -> Run: ...
 
     async def active_for_project(self, project_id: str) -> Run | None: ...
+
+    async def active_runs(self) -> list[Run]: ...
+
+    async def stale_active_for_project(
+        self, project_id: str, *, queued_before: datetime, lease_before: datetime
+    ) -> Run | None: ...
 
     async def append_event(self, run_id: str, event_type: str, payload: dict[str, Any]) -> int: ...
 

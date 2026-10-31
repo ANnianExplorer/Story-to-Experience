@@ -520,6 +520,7 @@ class OrchestrationService:
                 await heartbeat
 
         if error_code is not None:
+            await self._mark_unfinished_tasks(run_id, error_code)
             # Calls already spent must remain traceable even though the run
             # failed: cost accounting cannot depend on the stage succeeding.
             await self._record_calls(run_id, calls)
@@ -566,6 +567,14 @@ class OrchestrationService:
             error_details=error_details,
         )
 
+    async def _mark_unfinished_tasks(self, run_id: str, code: str) -> None:
+        """Close out tasks left at running so the trace never shows phantom work."""
+        async with self._uow() as uow:
+            for task in await uow.agents.tasks_for(run_id):
+                if task["status"] in {"pending", "ready", "running"}:
+                    await uow.agents.fail_task(task["task_id"], code)
+            await uow.commit()
+
     async def _heartbeat(
         self, run_id: str, owner: str, token: int, interval: float, lease_seconds: int
     ) -> None:
@@ -587,6 +596,31 @@ class OrchestrationService:
                 continue
 
     # ------------------------------------------------------------- sub-agents
+
+    async def _announce(self, envelope: AgentTaskEnvelope, objective: str) -> None:
+        """Create the pending task row and emit a progress event before running.
+
+        The trace endpoint is a read model; without an early row a run looks
+        frozen for the minutes a model call takes. The task row is then updated
+        in place by ``_finish_task``.
+        """
+        async with self._uow() as uow:
+            await uow.agents.create_task(envelope)
+            await uow.agents.mark_running(envelope.task_id)
+            await uow.commit()
+        async with self._uow() as uow:
+            await uow.runs.append_event(
+                envelope.run_id,
+                "stage",
+                {
+                    "task_id": envelope.task_id,
+                    "role": envelope.role.value,
+                    "agent_id": envelope.agent_id,
+                    "status": "running",
+                    "objective": objective,
+                },
+            )
+            await uow.commit()
 
     def _envelope(
         self,
@@ -638,6 +672,7 @@ class OrchestrationService:
             input_refs=(f"snapshot:{snapshot.id}",),
             input_hash=canonical_sha256({"snapshot": snapshot.sha256, "spans": sorted(span_id for span_id, _ in spans)}),
         )
+        await self._announce(envelope, envelope.objective)
         prompt = (
             f"资料片段（JSON，含 span_id 与原文）：\n{json.dumps(outline, ensure_ascii=False)}\n"
             f"已有人工事实（供参考，可为空）：{json.dumps([c.statement for c in claims], ensure_ascii=False)}\n"
@@ -688,6 +723,7 @@ class OrchestrationService:
             input_refs=(f"snapshot:{snapshot.id}", "evidence:latest"),
             input_hash=canonical_sha256(evidence),
         )
+        await self._announce(envelope, envelope.objective)
         facts = [
             {
                 "index": index,
@@ -754,6 +790,7 @@ class OrchestrationService:
             input_refs=(f"snapshot:{snapshot.id}", "blueprint:latest", "draft:structure"),
             input_hash=canonical_sha256({"draft": draft, "evidence": evidence}),
         )
+        await self._announce(envelope, envelope.objective)
         prompt = (
             f"创作者简报：{json.dumps(brief, ensure_ascii=False)}\n"
             f"事实（唯一可写的内容来源）：{json.dumps(evidence['claims'], ensure_ascii=False)}\n"
@@ -807,6 +844,7 @@ class OrchestrationService:
             input_refs=(f"snapshot:{snapshot.id}", "candidate:latest"),
             input_hash=canonical_sha256({"spec": spec, "blueprint": blueprint}),
         )
+        await self._announce(envelope, envelope.objective)
         prompt = (
             f"事实（唯一可接受的依据）：{json.dumps(evidence['claims'], ensure_ascii=False)}\n"
             f"蓝图目标：{json.dumps(blueprint.get('objectives', []), ensure_ascii=False)}\n"
@@ -850,6 +888,7 @@ class OrchestrationService:
             input_refs=(f"snapshot:{snapshot.id}", "candidate:latest", "validation:latest"),
             input_hash=canonical_sha256({"spec": candidate["spec"], "validation": validation}),
         )
+        await self._announce(envelope, envelope.objective)
         problems = {
             "validation": validation.get("findings", []),
             "review": review.get("findings", []),
@@ -1085,8 +1124,6 @@ class OrchestrationService:
             reason_code=None,
         )
         async with self._uow() as uow:
-            await uow.agents.create_task(envelope)
-            await uow.agents.mark_running(envelope.task_id)
             await uow.agents.save_result(
                 envelope.run_id,
                 result,
