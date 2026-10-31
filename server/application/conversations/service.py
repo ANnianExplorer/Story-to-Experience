@@ -171,6 +171,64 @@ class ConversationService:
             await uow.commit()
         return session
 
+    async def create_guide_session_from_experience(
+        self,
+        *,
+        experience_session_id: str,
+        actor_id: str,
+    ) -> ConversationSession:
+        """Open a Guide conversation for a participant's fixed experience session.
+
+        The version, dialogue profile and public evidence scope all come from the
+        shared version, never from the client. A revoked or expired share makes
+        this fail, which is how share revocation stops further conversation.
+        """
+        async with self._uow() as uow:
+            record = await uow.experience_sessions.get(experience_session_id)
+            if record is None or record["status"] != "active":
+                raise NotFound(object_id=experience_session_id)
+            share = await uow.shares.get(record["share_id"])
+            if share is None:
+                raise NotFound(object_id=experience_session_id)
+            expires = share["expires_at"]
+            if expires is not None and expires.tzinfo is None:
+                expires = expires.replace(tzinfo=timezone.utc)
+            if share["revoked_at"] is not None or (expires is not None and expires <= _now()):
+                raise NotFound(object_id=experience_session_id)
+            version = await uow.versions.get(record["version_id"])
+            if version is None:
+                raise NotFound(object_id=experience_session_id)
+            profile_payload = version.get("dialogue_profile")
+            if not profile_payload:
+                raise ValidationFailure("DIALOGUE_PROFILE_REQUIRED", "该版本没有可用的对话配置。")
+            profile = DialogueProfile(
+                id=str(profile_payload["id"]),
+                profile_version=str(profile_payload["profile_version"]),
+                persona_name=str(profile_payload["persona"]["name"]),
+                persona_role=str(profile_payload["persona"]["role"]),
+                adaptation_note=str(profile_payload["adaptation_note"]),
+                source_scope=tuple(str(item) for item in profile_payload["source_scope"]),
+                objective_ids=tuple(str(item) for item in profile_payload["objective_ids"]),
+                hint_policy=profile_payload["hint_policy"],
+                max_hint_level=int(profile_payload["max_hint_level"]),
+                allowed_actions=tuple(str(item) for item in profile_payload["allowed_actions"]),
+                model_policy_ref=str(profile_payload["model_policy_ref"]),
+            )
+            session = ConversationSession(
+                id=new_id(),
+                kind=SessionKind.GUIDE,
+                actor_id=actor_id,
+                project_id=record["project_id"],
+                version_id=record["version_id"],
+                profile_hash=profile.hash(),
+                share_id=record["share_id"],
+                expires_at=expires,
+                created_at=_now(),
+            )
+            await uow.conversations.create_session(session, profile.to_payload())
+            await uow.commit()
+        return session
+
     async def get_session(self, actor_id: str, session_id: str) -> ConversationSession:
         async with self._uow() as uow:
             session = await uow.conversations.get_session(session_id)

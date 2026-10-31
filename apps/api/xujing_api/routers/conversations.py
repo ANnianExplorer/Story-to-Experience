@@ -91,6 +91,24 @@ async def execute_turn(
     )
 
 
+@router.post("/experience-sessions/{session_id}/conversations", status_code=201)
+async def create_guide_conversation(
+    session_id: str, request: Request, actor: ActorDep, conversations: ConversationsDep
+) -> dict[str, Any]:
+    """Open a Guide conversation bound to one fixed shared version (F11-T03)."""
+    session = await conversations.create_guide_session_from_experience(
+        experience_session_id=session_id, actor_id=actor.id
+    )
+    return envelope(
+        {
+            "conversation_id": session.id,
+            "kind": session.kind.value,
+            "version_id": session.version_id,
+        },
+        request,
+    )
+
+
 @router.get("/conversation-turns/{turn_id}/events")
 async def turn_events(turn_id: str, request: Request, actor: ActorDep) -> dict[str, Any]:
     async with request.app.state.uow_factory() as uow:
