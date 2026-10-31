@@ -1,0 +1,54 @@
+name: Documentation and contract baseline
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: governance-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements-docs.txt
+      - name: Documentation governance
+        run: python scripts/check_docs.py
+      - name: UI tokens and generated styles
+        run: python scripts/check_ui.py
+      - name: Install fixture validator
+        run: python -m pip install -r requirements-docs.txt
+      - name: Schema and static fixture checks
+        run: python scripts/check_contracts.py
+      # Application lint/typecheck/build/unit/DB/browser/security gates must be
+      # added with their first implementation. This is not product acceptance.
+
+  design-preview:
+    name: React visual prototype only
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    defaults:
+      run:
+        working-directory: apps/design-preview
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/design-preview/package-lock.json
+      - run: npm ci --ignore-scripts --registry https://registry.npmjs.org
+      - run: npm run check
+      - run: node build.mjs --check
+      - run: npm test

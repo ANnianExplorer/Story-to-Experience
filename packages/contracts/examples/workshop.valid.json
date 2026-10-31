@@ -1,0 +1,301 @@
+{
+  "schema_version": "1.0.0",
+  "runtime_version": "1.0.0",
+  "brief": {
+    "audience": "合成教学样例，非真实非遗流程",
+    "duration_minutes": 5,
+    "learning_goals": [
+      "观察工具用途",
+      "识别前置步骤"
+    ]
+  },
+  "source_snapshot_id": "10000000-0000-4000-8000-000000000001",
+  "entry_scene": "entry",
+  "flags": [
+    {
+      "id": "clue_seen",
+      "initial": false
+    },
+    {
+      "id": "choice_done",
+      "initial": false
+    },
+    {
+      "id": "sequence_done",
+      "initial": false
+    }
+  ],
+  "claims": [
+    {
+      "id": "claim_tool",
+      "statement": "合成材料设定工具 X 用于观察。",
+      "content_type": "supported",
+      "evidence_span_ids": [
+        "30000000-0000-4000-8000-000000000001"
+      ],
+      "source_claim_id": "20000000-0000-4000-8000-000000000001",
+      "source_claim_revision": 1
+    },
+    {
+      "id": "claim_A_C",
+      "statement": "合成材料设定 A 先于 C。",
+      "content_type": "supported",
+      "evidence_span_ids": [
+        "30000000-0000-4000-8000-000000000002"
+      ],
+      "source_claim_id": "20000000-0000-4000-8000-000000000002",
+      "source_claim_revision": 1
+    },
+    {
+      "id": "claim_B_C",
+      "statement": "合成材料设定 B 先于 C。",
+      "content_type": "supported",
+      "evidence_span_ids": [
+        "30000000-0000-4000-8000-000000000003"
+      ],
+      "source_claim_id": "20000000-0000-4000-8000-000000000003",
+      "source_claim_revision": 1
+    }
+  ],
+  "objectives": [
+    {
+      "id": "objective_tool",
+      "description": "依据合成材料辨认工具用途。",
+      "claim_ids": [
+        "claim_tool"
+      ]
+    },
+    {
+      "id": "objective_order",
+      "description": "理解 C 的两个前置步骤，保留 A/B 的自由顺序。",
+      "claim_ids": [
+        "claim_A_C",
+        "claim_B_C"
+      ]
+    }
+  ],
+  "scenes": [
+    {
+      "id": "entry",
+      "title": "合成学徒体验",
+      "text": "这是工程样例，不描述真实工艺。",
+      "content_type": "adaptation",
+      "asset_ids": [],
+      "tasks": [],
+      "transitions": [
+        {
+          "id": "enter",
+          "label": "进入观察台",
+          "requires": {
+            "flag_equals": {
+              "id": "clue_seen",
+              "value": false
+            }
+          },
+          "target_scene": "observe"
+        }
+      ],
+      "claim_ids": []
+    },
+    {
+      "id": "observe",
+      "title": "观察台",
+      "text": "点击线索并选择工具用途。",
+      "content_type": "adaptation",
+      "asset_ids": [],
+      "tasks": [
+        {
+          "id": "task_clue",
+          "type": "hotspot",
+          "label": "查看工具 X 线索",
+          "required": true,
+          "completion_flag": "clue_seen",
+          "objective_ids": [
+            "objective_tool"
+          ],
+          "claim_ids": [
+            "claim_tool"
+          ],
+          "requires": {
+            "flag_equals": {
+              "id": "clue_seen",
+              "value": false
+            }
+          },
+          "on_success": [],
+          "feedback": {
+            "success": "操作完成，请查看知识与出处。",
+            "failure": "请根据线索再试一次。",
+            "claim_ids": [
+              "claim_tool"
+            ]
+          },
+          "hints": [
+            "请检查对应的材料片段。"
+          ]
+        },
+        {
+          "id": "task_choice",
+          "type": "choice",
+          "label": "选择工具 X 的用途",
+          "required": true,
+          "completion_flag": "choice_done",
+          "objective_ids": [
+            "objective_tool"
+          ],
+          "claim_ids": [
+            "claim_tool"
+          ],
+          "requires": {
+            "flag_equals": {
+              "id": "clue_seen",
+              "value": true
+            }
+          },
+          "on_success": [],
+          "feedback": {
+            "success": "操作完成，请查看知识与出处。",
+            "failure": "请根据线索再试一次。",
+            "claim_ids": [
+              "claim_tool"
+            ]
+          },
+          "hints": [
+            "请检查对应的材料片段。"
+          ],
+          "options": [
+            {
+              "id": "observe_tool",
+              "label": "观察",
+              "correct": true,
+              "feedback": "符合合成材料。",
+              "on_success": []
+            },
+            {
+              "id": "invented_tool",
+              "label": "材料没有说明的其他用途",
+              "correct": false,
+              "feedback": "请回到材料核对，不能猜测用途。",
+              "on_success": []
+            }
+          ]
+        }
+      ],
+      "transitions": [
+        {
+          "id": "to_sequence",
+          "label": "前往排序台",
+          "requires": {
+            "flag_equals": {
+              "id": "choice_done",
+              "value": true
+            }
+          },
+          "target_scene": "sequence"
+        }
+      ],
+      "claim_ids": []
+    },
+    {
+      "id": "sequence",
+      "title": "排序台",
+      "text": "A 和 B 都应在 C 前；没有规定 A/B 顺序。",
+      "content_type": "adaptation",
+      "asset_ids": [],
+      "tasks": [
+        {
+          "id": "task_sequence",
+          "type": "sequence",
+          "label": "排列步骤",
+          "required": true,
+          "completion_flag": "sequence_done",
+          "objective_ids": [
+            "objective_order"
+          ],
+          "claim_ids": [
+            "claim_A_C",
+            "claim_B_C"
+          ],
+          "requires": {
+            "flag_equals": {
+              "id": "choice_done",
+              "value": true
+            }
+          },
+          "on_success": [],
+          "feedback": {
+            "success": "操作完成，请查看知识与出处。",
+            "failure": "请根据线索再试一次。",
+            "claim_ids": [
+              "claim_A_C",
+              "claim_B_C"
+            ]
+          },
+          "hints": [
+            "请检查对应的材料片段。"
+          ],
+          "items": [
+            {
+              "id": "A",
+              "label": "步骤 A"
+            },
+            {
+              "id": "B",
+              "label": "步骤 B"
+            },
+            {
+              "id": "C",
+              "label": "步骤 C"
+            }
+          ],
+          "precedence": [
+            {
+              "before": "A",
+              "after": "C",
+              "claim_id": "claim_A_C"
+            },
+            {
+              "before": "B",
+              "after": "C",
+              "claim_id": "claim_B_C"
+            }
+          ]
+        }
+      ],
+      "transitions": [
+        {
+          "id": "finish",
+          "label": "查看复盘",
+          "requires": {
+            "flag_equals": {
+              "id": "sequence_done",
+              "value": true
+            }
+          },
+          "target_scene": "recap"
+        }
+      ],
+      "claim_ids": []
+    },
+    {
+      "id": "recap",
+      "title": "完成与复盘",
+      "text": "你用合成材料完成了观察、选择和排序；查看出处后可以重玩。",
+      "content_type": "adaptation",
+      "asset_ids": [],
+      "tasks": [],
+      "transitions": [],
+      "claim_ids": []
+    }
+  ],
+  "completion": {
+    "scene_id": "recap",
+    "required_flags": [
+      "clue_seen",
+      "choice_done",
+      "sequence_done"
+    ]
+  },
+  "asset_manifest": []
+}
+

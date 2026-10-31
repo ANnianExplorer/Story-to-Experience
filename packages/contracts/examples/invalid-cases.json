@@ -1,0 +1,77 @@
+[
+  {
+    "id": "unknown-field",
+    "path": "/scenes/1/tasks/0/script",
+    "value": "alert('forbidden')",
+    "expected": "schema_invalid",
+    "reason": "未知字段和脚本入口"
+  },
+  {
+    "id": "wrong-initial",
+    "path": "/flags/0/initial",
+    "value": true,
+    "expected": "schema_invalid",
+    "reason": "标记初始只允许 false"
+  },
+  {
+    "id": "unknown-target",
+    "path": "/scenes/0/transitions/0/target_scene",
+    "value": "missing_scene",
+    "expected": "semantic_invalid",
+    "reason": "悬空场景引用"
+  },
+  {
+    "id": "duplicate-flag",
+    "path": "/flags/1/id",
+    "value": "clue_seen",
+    "expected": "semantic_invalid",
+    "reason": "标记 ID 重复"
+  },
+  {
+    "id": "empty-supported-evidence",
+    "path": "/claims/0/evidence_span_ids",
+    "value": [],
+    "expected": "schema_invalid",
+    "reason": "supported 必有证据"
+  },
+  {
+    "id": "cyclic-precedence",
+    "path": "/scenes/2/tasks/0/precedence",
+    "value": [
+      {
+        "before": "A",
+        "after": "C",
+        "claim_id": "claim_A_C"
+      },
+      {
+        "before": "C",
+        "after": "A",
+        "claim_id": "claim_A_C"
+      }
+    ],
+    "expected": "semantic_invalid",
+    "reason": "偏序环"
+  },
+  {
+    "id": "missing-completion-flag",
+    "path": "/completion/required_flags",
+    "value": [
+      "sequence_done"
+    ],
+    "expected": "semantic_invalid",
+    "reason": "完成条件缺必要任务标记"
+  },
+  {
+    "id": "wrong-option-effect",
+    "path": "/scenes/1/tasks/1/options/1/on_success",
+    "value": [
+      {
+        "set_flag": "choice_done",
+        "value": true
+      }
+    ],
+    "expected": "schema_invalid",
+    "reason": "错误选项不能产生效果"
+  }
+]
+

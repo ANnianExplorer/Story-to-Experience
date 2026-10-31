@@ -1,0 +1,3 @@
+# Only for documentation/contract checks, not application dependencies.
+jsonschema==4.23.0
+

@@ -1,0 +1,847 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:story-to-experience:experience-spec:1.0.0",
+  "title": "Story-to-Experience ExperienceSpec v1",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "const": "1.0.0"
+    },
+    "runtime_version": {
+      "const": "1.0.0"
+    },
+    "brief": {
+      "type": "object",
+      "properties": {
+        "audience": {
+          "$ref": "#/$defs/text"
+        },
+        "duration_minutes": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        },
+        "learning_goals": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "minItems": 1,
+          "maxItems": 6
+        }
+      },
+      "required": [
+        "audience",
+        "duration_minutes",
+        "learning_goals"
+      ],
+      "additionalProperties": false
+    },
+    "source_snapshot_id": {
+      "$ref": "#/$defs/uuid"
+    },
+    "entry_scene": {
+      "$ref": "#/$defs/id"
+    },
+    "flags": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "initial": {
+            "const": false
+          }
+        },
+        "required": [
+          "id",
+          "initial"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 12
+    },
+    "claims": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/claim"
+      },
+      "minItems": 1,
+      "maxItems": 100
+    },
+    "objectives": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "description": {
+            "$ref": "#/$defs/text"
+          },
+          "claim_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/id"
+            },
+            "minItems": 1,
+            "maxItems": 12,
+            "uniqueItems": true
+          }
+        },
+        "required": [
+          "id",
+          "description",
+          "claim_ids"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 1,
+      "maxItems": 6
+    },
+    "scenes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/scene"
+      },
+      "minItems": 4,
+      "maxItems": 6
+    },
+    "completion": {
+      "type": "object",
+      "properties": {
+        "scene_id": {
+          "$ref": "#/$defs/id"
+        },
+        "required_flags": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 1,
+          "maxItems": 6,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "scene_id",
+        "required_flags"
+      ],
+      "additionalProperties": false
+    },
+    "asset_manifest": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "mime_type": {
+            "enum": [
+              "image/png",
+              "image/jpeg",
+              "image/webp"
+            ]
+          },
+          "license_note": {
+            "$ref": "#/$defs/text"
+          }
+        },
+        "required": [
+          "id",
+          "sha256",
+          "mime_type",
+          "license_note"
+        ],
+        "additionalProperties": false
+      },
+      "minItems": 0,
+      "maxItems": 24
+    }
+  },
+  "required": [
+    "schema_version",
+    "runtime_version",
+    "brief",
+    "source_snapshot_id",
+    "entry_scene",
+    "flags",
+    "claims",
+    "objectives",
+    "scenes",
+    "completion",
+    "asset_manifest"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]{0,63}$"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000
+    },
+    "condition": {
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "all": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              },
+              "minItems": 1,
+              "maxItems": 12
+            }
+          },
+          "required": [
+            "all"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "any": {
+              "type": "array",
+              "items": {
+                "$ref": "#/$defs/condition"
+              },
+              "minItems": 1,
+              "maxItems": 12
+            }
+          },
+          "required": [
+            "any"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "not": {
+              "$ref": "#/$defs/condition"
+            }
+          },
+          "required": [
+            "not"
+          ],
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "properties": {
+            "flag_equals": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "$ref": "#/$defs/id"
+                },
+                "value": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "value"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "flag_equals"
+          ],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "effect": {
+      "type": "object",
+      "properties": {
+        "set_flag": {
+          "$ref": "#/$defs/id"
+        },
+        "value": {
+          "const": true
+        }
+      },
+      "required": [
+        "set_flag",
+        "value"
+      ],
+      "additionalProperties": false
+    },
+    "feedback": {
+      "type": "object",
+      "properties": {
+        "success": {
+          "$ref": "#/$defs/text"
+        },
+        "failure": {
+          "$ref": "#/$defs/text"
+        },
+        "claim_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0,
+          "maxItems": 12,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "success",
+        "failure",
+        "claim_ids"
+      ],
+      "additionalProperties": false
+    },
+    "claim": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "statement": {
+          "$ref": "#/$defs/text"
+        },
+        "content_type": {
+          "enum": [
+            "supported",
+            "legend",
+            "adaptation",
+            "unconfirmed"
+          ]
+        },
+        "evidence_span_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/uuid"
+          },
+          "minItems": 0,
+          "maxItems": 20,
+          "uniqueItems": true
+        },
+        "source_claim_id": {
+          "$ref": "#/$defs/uuid"
+        },
+        "source_claim_revision": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "required": [
+        "id",
+        "statement",
+        "content_type",
+        "evidence_span_ids",
+        "source_claim_id",
+        "source_claim_revision"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "content_type": {
+                "enum": [
+                  "supported",
+                  "legend"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "evidence_span_ids": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "choice_option": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "label": {
+          "$ref": "#/$defs/text"
+        },
+        "correct": {
+          "type": "boolean"
+        },
+        "feedback": {
+          "$ref": "#/$defs/text"
+        },
+        "on_success": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          },
+          "minItems": 0,
+          "maxItems": 12
+        },
+        "target_scene": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "correct",
+        "feedback",
+        "on_success"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "correct": {
+                "const": false
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "on_success": {
+                "maxItems": 0
+              }
+            },
+            "not": {
+              "required": [
+                "target_scene"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "hotspot": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "const": "hotspot"
+        },
+        "label": {
+          "$ref": "#/$defs/text"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "completion_flag": {
+          "$ref": "#/$defs/id"
+        },
+        "objective_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0,
+          "maxItems": 12,
+          "uniqueItems": true
+        },
+        "claim_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0,
+          "maxItems": 12,
+          "uniqueItems": true
+        },
+        "requires": {
+          "$ref": "#/$defs/condition"
+        },
+        "on_success": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          },
+          "minItems": 0,
+          "maxItems": 12
+        },
+        "feedback": {
+          "$ref": "#/$defs/feedback"
+        },
+        "hints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "minItems": 0,
+          "maxItems": 6
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "label",
+        "required",
+        "completion_flag",
+        "objective_ids",
+        "claim_ids",
+        "requires",
+        "on_success",
+        "feedback",
+        "hints"
+      ],
+      "additionalProperties": false
+    },
+    "choice": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "const": "choice"
+        },
+        "label": {
+          "$ref": "#/$defs/text"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "completion_flag": {
+          "$ref": "#/$defs/id"
+        },
+        "objective_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0,
+          "maxItems": 12,
+          "uniqueItems": true
+        },
+        "claim_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0,
+          "maxItems": 12,
+          "uniqueItems": true
+        },
+        "requires": {
+          "$ref": "#/$defs/condition"
+        },
+        "on_success": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          },
+          "minItems": 0,
+          "maxItems": 12
+        },
+        "feedback": {
+          "$ref": "#/$defs/feedback"
+        },
+        "hints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "minItems": 0,
+          "maxItems": 6
+        },
+        "options": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/choice_option"
+          },
+          "minItems": 2,
+          "maxItems": 6
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "label",
+        "required",
+        "completion_flag",
+        "objective_ids",
+        "claim_ids",
+        "requires",
+        "on_success",
+        "feedback",
+        "hints",
+        "options"
+      ],
+      "additionalProperties": false
+    },
+    "sequence": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "type": {
+          "const": "sequence"
+        },
+        "label": {
+          "$ref": "#/$defs/text"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "completion_flag": {
+          "$ref": "#/$defs/id"
+        },
+        "objective_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0,
+          "maxItems": 12,
+          "uniqueItems": true
+        },
+        "claim_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0,
+          "maxItems": 12,
+          "uniqueItems": true
+        },
+        "requires": {
+          "$ref": "#/$defs/condition"
+        },
+        "on_success": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/effect"
+          },
+          "minItems": 0,
+          "maxItems": 12
+        },
+        "feedback": {
+          "$ref": "#/$defs/feedback"
+        },
+        "hints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/text"
+          },
+          "minItems": 0,
+          "maxItems": 6
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "label": {
+                "$ref": "#/$defs/text"
+              }
+            },
+            "required": [
+              "id",
+              "label"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 2,
+          "maxItems": 6
+        },
+        "precedence": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "before": {
+                "$ref": "#/$defs/id"
+              },
+              "after": {
+                "$ref": "#/$defs/id"
+              },
+              "claim_id": {
+                "$ref": "#/$defs/id"
+              }
+            },
+            "required": [
+              "before",
+              "after",
+              "claim_id"
+            ],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "maxItems": 30
+        }
+      },
+      "required": [
+        "id",
+        "type",
+        "label",
+        "required",
+        "completion_flag",
+        "objective_ids",
+        "claim_ids",
+        "requires",
+        "on_success",
+        "feedback",
+        "hints",
+        "items",
+        "precedence"
+      ],
+      "additionalProperties": false
+    },
+    "task": {
+      "oneOf": [
+        {
+          "$ref": "#/$defs/hotspot"
+        },
+        {
+          "$ref": "#/$defs/choice"
+        },
+        {
+          "$ref": "#/$defs/sequence"
+        }
+      ]
+    },
+    "transition": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "label": {
+          "$ref": "#/$defs/text"
+        },
+        "requires": {
+          "$ref": "#/$defs/condition"
+        },
+        "target_scene": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": [
+        "id",
+        "label",
+        "requires",
+        "target_scene"
+      ],
+      "additionalProperties": false
+    },
+    "scene": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "title": {
+          "$ref": "#/$defs/text"
+        },
+        "text": {
+          "$ref": "#/$defs/text"
+        },
+        "content_type": {
+          "enum": [
+            "supported",
+            "legend",
+            "adaptation",
+            "unconfirmed"
+          ]
+        },
+        "asset_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0,
+          "maxItems": 6,
+          "uniqueItems": true
+        },
+        "tasks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/task"
+          },
+          "minItems": 0,
+          "maxItems": 12
+        },
+        "transitions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/transition"
+          },
+          "minItems": 0,
+          "maxItems": 12
+        },
+        "claim_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0,
+          "maxItems": 12,
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "id",
+        "title",
+        "text",
+        "content_type",
+        "asset_ids",
+        "tasks",
+        "transitions",
+        "claim_ids"
+      ],
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "content_type": {
+                "enum": [
+                  "supported",
+                  "legend"
+                ]
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "claim_ids": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
+    },
+    "uuid": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    }
+  }
+}
+
