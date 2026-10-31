@@ -7,7 +7,7 @@
 import React, { useEffect, useState } from 'react';
 
 import { client } from '../hooks/use-workbench.ts';
-import { StatusPill } from './primitives.tsx';
+import { Seal, StatusPill } from './primitives.tsx';
 
 export interface Health {
   simulated: boolean;
@@ -37,18 +37,16 @@ export function AppShell({ children, actions }: { children: React.ReactNode; act
     <div className="app">
       <header className="topbar">
         <div className="brand">
-          <span className="brand-mark" aria-hidden="true" />
+          <Seal filled>叙境</Seal>
           <div>
             <h1>叙境</h1>
-            <p>多 Agent 协作的文化体验工作台</p>
+            <p>文化资料 · 多 Agent 共创 · 有出处</p>
           </div>
         </div>
         <div className="health">
           {health ? (
             <>
-              <StatusPill
-                tone={health.simulated ? 'warn' : health.configured ? 'ok' : 'bad'}
-              >
+              <StatusPill tone={health.simulated ? 'warn' : health.configured ? 'ok' : 'bad'}>
                 {health.simulated
                   ? '模拟模型（结果不代表真实生成）'
                   : health.configured

@@ -4,6 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import '../../../packages/ui/tokens.css';
+import '../../../packages/ui/classical.css';
 import './styles.css';
 
 import { AppShell } from './components/app-shell.tsx';

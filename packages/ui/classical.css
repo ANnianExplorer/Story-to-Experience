@@ -1,0 +1,218 @@
+/* ==========================================================================
+   叙境 · 古典编辑层（classical.css）
+
+   所有颜色、字号、间距、圆角、动效时长只引用 packages/ui/tokens.css 的
+   --xj-* 变量；本文件不重复声明任何数值。它是两个前端共用的"版式语言"，
+   不是第二套主题：Token 改了，这里自动跟随。
+
+   参考方向：kigo.studio 的大字编辑式排版、暗场与编号细线，转译为
+   中国册页／卷轴／印章的语汇 —— 宣纸底、墨色、朱印、鎏金细线、竖排题签。
+   ========================================================================== */
+
+/* ---------- 纸面与墨面 ---------- */
+
+.xj-paper {
+  background-color: var(--xj-color-paper-warm);
+  color: var(--xj-color-ink);
+}
+
+/* 纸的细颗粒：用 Token 的墨色极低透明度叠加，不盖住正文。
+   透明度只能由 color-mix 相对 Token 生成，避免出现第二份颜色值。 */
+.xj-grain::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.55;
+  background-image:
+    radial-gradient(circle at 20% 30%, color-mix(in oklab, var(--xj-color-ink) 6%, transparent) 0 1px, transparent 1.2px),
+    radial-gradient(circle at 70% 65%, color-mix(in oklab, var(--xj-color-ink) 5%, transparent) 0 1px, transparent 1.3px);
+  background-size: 7px 9px, 11px 13px;
+}
+
+.xj-ink {
+  background-color: var(--xj-color-ink-void);
+  color: var(--xj-color-surface);
+}
+
+/* ---------- 字体角色 ---------- */
+
+.xj-display {
+  font-family: var(--xj-font-display-family);
+  font-weight: var(--xj-weight-regular);
+  font-size: var(--xj-font-display);
+  line-height: 1.06;
+  letter-spacing: 0.02em;
+}
+
+.xj-section-title {
+  font-family: var(--xj-font-display-family);
+  font-weight: var(--xj-weight-regular);
+  font-size: var(--xj-font-section);
+  line-height: 1.18;
+  letter-spacing: 0.03em;
+}
+
+.xj-serif {
+  font-family: var(--xj-font-display-family);
+}
+
+/* 引文与出处用楷体：古籍摘录的语感，和正文无衬线明确区分。 */
+.xj-quote {
+  font-family: var(--xj-font-kai-family);
+  line-height: var(--xj-leading-body);
+  letter-spacing: 0.01em;
+}
+
+.xj-kicker {
+  font-family: var(--xj-font-label-family);
+  font-size: var(--xj-font-label);
+  line-height: var(--xj-leading-meta);
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+/* ---------- 编号、细线与题签 ---------- */
+
+/* 章目编号：罗马数字 + 细线 + 名称，替代"小徽章 + 标题"的通用写法。 */
+.xj-index {
+  display: flex;
+  align-items: baseline;
+  gap: var(--xj-space-12);
+  font-family: var(--xj-font-label-family);
+  font-size: var(--xj-font-label);
+  letter-spacing: 0.2em;
+  color: var(--xj-color-muted);
+}
+
+.xj-index::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--xj-color-border);
+  transform: translateY(-0.35em);
+}
+
+.xj-index-no {
+  color: var(--xj-color-seal);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 带刻度的横线：右端三道短竖线，来自册页行格的裁切线。 */
+.xj-rule {
+  position: relative;
+  height: 1px;
+  background: var(--xj-color-border);
+}
+
+.xj-rule::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: -3px;
+  width: 18px;
+  height: 7px;
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--xj-color-gilded) 0 1px,
+    transparent 1px 6px
+  );
+}
+
+/* 竖排题签：kigo 的竖排日文转成中文题签，用于章节与侧栏。 */
+.xj-vertical {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  font-family: var(--xj-font-display-family);
+  letter-spacing: 0.3em;
+  line-height: 1.4;
+}
+
+/* ---------- 印章 ---------- */
+
+/* 朱文印：方形、篆意字、轻微倾斜；只做标记，不承载交互。 */
+.xj-seal {
+  display: inline-grid;
+  place-items: center;
+  width: 46px;
+  height: 46px;
+  border: 2px solid var(--xj-color-seal);
+  color: var(--xj-color-seal);
+  border-radius: 3px;
+  font-family: var(--xj-font-kai-family);
+  font-size: var(--xj-font-meta);
+  line-height: 1.05;
+  letter-spacing: 0.02em;
+  text-align: center;
+  transform: rotate(-3deg);
+  user-select: none;
+}
+
+.xj-seal--filled {
+  background: var(--xj-color-seal);
+  color: var(--xj-color-surface);
+}
+
+/* 完成页的落印：从上方压下，尊重减少动效。 */
+@keyframes xj-seal-press {
+  from {
+    opacity: 0;
+    transform: rotate(-3deg) translateY(-10px) scale(1.14);
+  }
+  to {
+    opacity: 1;
+    transform: rotate(-3deg) translateY(0) scale(1);
+  }
+}
+
+.xj-seal--press {
+  animation: xj-seal-press var(--xj-motion-title) var(--xj-motion-ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .xj-seal--press {
+    animation: none;
+  }
+}
+
+/* ---------- 框与面 ---------- */
+
+/* 双细线书框：外粗内细，像函套的边。 */
+.xj-frame {
+  border: 1px solid var(--xj-color-border);
+  box-shadow: inset 0 0 0 4px var(--xj-color-paper-warm), inset 0 0 0 5px var(--xj-color-border);
+}
+
+.xj-tint-mist {
+  background: var(--xj-color-mist);
+}
+
+.xj-tint-paper {
+  background: var(--xj-color-paper-warm);
+}
+
+/* ---------- 版式辅助 ---------- */
+
+.xj-measure {
+  max-width: 34em;
+}
+
+.xj-nowrap {
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .xj-display {
+    font-size: var(--xj-font-display-mobile);
+  }
+
+  .xj-section-title {
+    font-size: var(--xj-font-section-mobile);
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1279px) {
+  .xj-display {
+    font-size: var(--xj-font-display-tablet);
+  }
+}

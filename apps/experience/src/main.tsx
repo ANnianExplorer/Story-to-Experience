@@ -5,6 +5,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { MotionConfig } from 'motion/react';
 import '../../../packages/ui/tokens.css';
+import '../../../packages/ui/classical.css';
 import './styles.css';
 
 import { PlayerPage } from './pages/player.tsx';

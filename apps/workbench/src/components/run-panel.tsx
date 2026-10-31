@@ -79,7 +79,7 @@ export function RunPanel({ scope }: { scope: WorkbenchScope }) {
     });
 
   return (
-    <Panel title="生成与执行轨迹" headingId="run-heading">
+    <Panel title="生成与执行轨迹" headingId="run-heading" index="零二">
       <Field label="创作要求（自然语言）">
         <textarea rows={3} value={instruction} onChange={(event) => setInstruction(event.target.value)} />
       </Field>

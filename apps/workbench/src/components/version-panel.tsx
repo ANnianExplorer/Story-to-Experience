@@ -18,7 +18,11 @@ export function VersionPanel({ scope }: { scope: WorkbenchScope }) {
     run(async () => {
       if (!state.project || !selected) return;
       dispatch({ type: 'review_submitted' });
-      const claims = await client.listClaims(state.project.id);
+      // Cover exactly the claims this *version* binds. Project-level claims
+      // include drafts that never entered the frozen snapshot, and a review
+      // naming them would be rejected (REVIEW_COVERAGE_UNKNOWN).
+      const version = await client.getVersion(selected.id);
+      const claims = (version.spec as { claims?: { id: string }[] }).claims ?? [];
       await client.submitReview(selected.id, {
         decision: 'approved',
         notes: notes || '内容与来源核对通过。',
@@ -30,7 +34,7 @@ export function VersionPanel({ scope }: { scope: WorkbenchScope }) {
     });
 
   return (
-    <Panel title="版本与审核" headingId="version-heading">
+    <Panel title="版本与审核" headingId="version-heading" index="零四">
       {state.versions.length === 0 && <p className="hint">尚未生成候选。完成一次生成后在此查看版本。</p>}
       <ul className="versions">
         {state.versions.map((version) => (

@@ -169,6 +169,15 @@ class EvidenceService:
             await uow.commit()
         return stored
 
+    async def documents(self, actor_id: str, project_id: str) -> list[SourceDocument]:
+        """List a project's materials so the workbench can restore state after a reload."""
+        async with self._uow() as uow:
+            project = await uow.projects.get(project_id)
+            if project is None:
+                raise NotFound(object_id=project_id)
+            project.assert_owned_by(actor_id)
+            return await uow.evidence.list_documents(project_id)
+
     async def claims(self, actor_id: str, project_id: str) -> list[Claim]:
         async with self._uow() as uow:
             project = await uow.projects.get(project_id)

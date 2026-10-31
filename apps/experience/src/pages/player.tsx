@@ -7,7 +7,6 @@
  */
 import React, { useEffect, useState } from 'react';
 
-import tokens from '../../../../packages/ui/tokens.json';
 import type { ExperienceSpec } from '../../../../packages/contracts/index.ts';
 import type { DialogueProfile } from '../../../../packages/contracts/index.ts';
 import { GuidePanel } from '../components/guide-panel.tsx';
@@ -118,7 +117,7 @@ export function PlayerPage() {
       </main>
       <footer className="player-foot">
         <p className="meta">
-          本页由 {tokens.theme} 主题渲染。角色对白为改编创作，事实陈述可在场景内展开出处核对。
+          角色对白为改编创作，不是历史原话；事实陈述可在场景内展开出处核对。
         </p>
       </footer>
     </div>

@@ -132,6 +132,28 @@ async def upload_text(
     )
 
 
+@router.get("/projects/{project_id}/sources")
+async def list_sources(
+    project_id: str, request: Request, actor: ActorDep, evidence: EvidenceDep
+) -> dict[str, Any]:
+    documents = await evidence.documents(actor.id, project_id)
+    return envelope(
+        [
+            {
+                "source_id": document.id,
+                "title": document.title,
+                "parse_status": document.parse_status,
+                "parse_version": document.parse_version,
+                "sha256": document.sha256,
+                "error_code": document.error_code,
+                "created_at": document.created_at.isoformat() if document.created_at else None,
+            }
+            for document in documents
+        ],
+        request,
+    )
+
+
 @router.get("/sources/{source_id}")
 async def get_source(source_id: str, request: Request, actor: ActorDep, evidence: EvidenceDep) -> dict[str, Any]:
     document = await evidence.get_document(actor.id, source_id)

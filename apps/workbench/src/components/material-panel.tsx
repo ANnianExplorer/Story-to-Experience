@@ -60,7 +60,7 @@ export function MaterialPanel({ scope }: { scope: WorkbenchScope }) {
     });
 
   return (
-    <Panel title="资料与证据" headingId="material-heading">
+    <Panel title="资料与证据" headingId="material-heading" index="零一">
       <Field label="正文">
         <textarea rows={6} value={text} onChange={(event) => setText(event.target.value)} />
       </Field>

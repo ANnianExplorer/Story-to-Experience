@@ -183,7 +183,21 @@ export class XujingClient {
     }
     if (!response.ok) {
       const envelope = payload as { error?: ApiErrorBody } | null;
-      throw new ApiError(response.status, envelope?.error ?? { code: 'UNKNOWN', message: '请求失败。' });
+      if (envelope?.error?.code) {
+        throw new ApiError(response.status, envelope.error);
+      }
+      // Not our envelope: name the status so the user sees something actionable
+      // instead of an opaque "UNKNOWN".
+      throw new ApiError(response.status, {
+        code: `HTTP_${response.status}`,
+        message:
+          response.status === 404
+            ? '请求的资源不存在（接口可能未部署）。'
+            : response.status === 405
+              ? '该接口不接受此请求方法（前端与服务端版本可能不一致）。'
+              : `服务返回 ${response.status} ${response.statusText || ''}`.trim(),
+        retryable: response.status >= 500,
+      });
     }
     return (payload as { data?: T })?.data as T;
   }
@@ -212,6 +226,10 @@ export class XujingClient {
     input: { text: string; title: string; license_note: string },
   ): Promise<SourceSummary> {
     return this.request<SourceSummary>('POST', `/api/v1/projects/${projectId}/sources/text`, input);
+  }
+
+  listSources(projectId: string): Promise<{ source_id: string; title: string; parse_status: string }[]> {
+    return this.request('GET', `/api/v1/projects/${projectId}/sources`);
   }
 
   listSpans(sourceId: string): Promise<Span[]> {

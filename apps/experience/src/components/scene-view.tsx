@@ -50,7 +50,15 @@ export function SceneView({ session, onAction, onHint, hint, onReplay }: SceneVi
 
   return (
     <section className="scene" aria-labelledby="scene-title">
-      <p className="chapter">{scene.content_type === 'adaptation' ? '改编场景' : scene.content_type === 'legend' ? '传说' : '资料场景'}</p>
+      <div className="chapter-row">
+        <span className="xj-seal" aria-hidden="true">
+          {String(session.spec.scenes.findIndex((item) => item.id === scene.id) + 1).padStart(2, '0')}
+        </span>
+        <p className="chapter">
+          {scene.content_type === 'adaptation' ? '改编场景' : scene.content_type === 'legend' ? '传说' : '资料场景'}
+        </p>
+        <span className="chapter-rule" aria-hidden="true" />
+      </div>
       <h2 id="scene-title">{scene.title}</h2>
       <p className="scene-text">{scene.text}</p>
 
@@ -171,9 +179,16 @@ export function SceneView({ session, onAction, onHint, hint, onReplay }: SceneVi
       )}
 
       {isCompletion && (
-        <button className="primary" onClick={onReplay}>
-          再体验一次
-        </button>
+        <>
+          {/* The seal is the ending mark of a folded page; it is authored
+              decoration, so it is hidden from assistive tech. */}
+          <span className="xj-seal xj-seal--filled xj-seal--press" aria-hidden="true">
+            体验毕
+          </span>
+          <button className="primary" onClick={onReplay}>
+            再体验一次
+          </button>
+        </>
       )}
     </section>
   );

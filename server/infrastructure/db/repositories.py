@@ -223,6 +223,14 @@ class EvidenceRepository:
         await self._session.flush()
         return document
 
+    async def list_documents(self, project_id: str) -> list[SourceDocument]:
+        stmt = (
+            select(SourceDocumentRow)
+            .where(SourceDocumentRow.project_id == project_id)
+            .order_by(SourceDocumentRow.created_at)
+        )
+        return [self._document(row) for row in (await self._session.execute(stmt)).scalars()]
+
     async def get_document(self, source_id: str) -> SourceDocument | None:
         row = await self._session.get(SourceDocumentRow, source_id)
         return self._document(row) if row else None

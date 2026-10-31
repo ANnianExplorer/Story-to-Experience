@@ -71,7 +71,7 @@ export function ChatPanel({ scope }: { scope: WorkbenchScope }) {
     });
 
   return (
-    <Panel title="创作共创" headingId="chat-heading">
+    <Panel title="创作共创" headingId="chat-heading" index="零三">
       <p className="hint">AI 可以解释、检索与提计划，但不会替你发布；所有修改仍走受控用例。</p>
       <div className="messages" role="log" aria-live="polite">
         {messages.map((message, index) => (

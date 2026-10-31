@@ -211,3 +211,26 @@ async def test_guide_session_cannot_be_created_without_active_share(client: http
     assert response.json()["error"]["code"] == "SHARE_NOT_FOUND"
     session = await client.post("/api/v1/share/not-a-real-token/sessions")
     assert session.status_code == 404
+
+
+async def test_listing_project_sources_restores_workbench_state(client: httpx.AsyncClient) -> None:
+    created = await client.post("/api/v1/projects", json={"name": "资料列表", "brief": brief_json()})
+    project_id = created.json()["data"]["id"]
+    uploaded = await client.post(
+        f"/api/v1/projects/{project_id}/sources/text",
+        json={"text": MATERIAL, "title": "材料一", "license_note": "合成"},
+    )
+    source_id = uploaded.json()["data"]["source_id"]
+
+    listed = await client.get(f"/api/v1/projects/{project_id}/sources")
+    assert listed.status_code == 200
+    items = listed.json()["data"]
+    assert [item["source_id"] for item in items] == [source_id]
+    assert items[0]["parse_status"] == "ready"
+    assert items[0]["title"] == "材料一"
+
+    # Another actor sees the project as nonexistent, not an empty list.
+    other = await client.get(
+        f"/api/v1/projects/{project_id}/sources", headers={"x-actor-id": BOB}
+    )
+    assert other.status_code == 404

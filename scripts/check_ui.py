@@ -10,6 +10,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 TOKEN_PATH = ROOT / 'packages/ui/tokens.json'
 CSS_PATH = ROOT / 'packages/ui/tokens.css'
+CLASSICAL_PATH = ROOT / 'packages/ui/classical.css'
+APP_STYLES = (
+    ROOT / 'apps/workbench/src/styles.css',
+    ROOT / 'apps/experience/src/styles.css',
+)
 REQUIRED_PAIRS = {
     ('ink', 'paper', 4.5), ('ink', 'surface', 4.5),
     ('muted', 'paper', 4.5), ('muted', 'surface', 4.5),
@@ -19,6 +24,10 @@ REQUIRED_PAIRS = {
     ('error', 'error-soft', 4.5), ('success', 'success-soft', 4.5),
     ('warning', 'warning-soft', 4.5),
     ('control-border', 'surface', 3), ('sea-deep', 'paper', 3),
+    # Editorial/classical roles added with the Kigo-inspired direction.
+    ('surface', 'ink-void', 4.5), ('ink', 'paper-warm', 4.5),
+    ('muted', 'paper-warm', 4.5), ('surface', 'seal', 4.5),
+    ('seal', 'seal-soft', 4.5),
 }
 
 
@@ -40,6 +49,13 @@ def render_css(tokens: dict) -> str:
     for name, value in tokens['colors'].items():
         add(f'color-{name}', value)
     add('font-family', tokens['font']['family'])
+    for key, css_name in (
+        ('display_family', 'font-display-family'),
+        ('kai_family', 'font-kai-family'),
+        ('label_family', 'font-label-family'),
+    ):
+        if key in tokens['font']:
+            add(css_name, tokens['font'][key])
     for name, value in tokens['font']['size_px'].items():
         add(f'font-{name.replace("_", "-")}', f'{value}px')
     for name, value in tokens['font']['weight'].items():
@@ -62,11 +78,62 @@ def render_css(tokens: dict) -> str:
     return '\n'.join(lines)
 
 
+HEX = re.compile(r'#[0-9A-Fa-f]{3,8}(?![0-9A-Za-z])')
+RAW_COLOR = re.compile(r'(?:rgba?|hsla?)\(')
+
+
+def defined_variables(tokens: dict) -> set[str]:
+    names = {f'color-{key}' for key in tokens['colors']}
+    names |= {f'font-{key.replace("_", "-")}' for key in tokens['font']['size_px']}
+    names |= {f'weight-{key}' for key in tokens['font']['weight']}
+    names |= {f'leading-{key}' for key in tokens['font']['line_height']}
+    names |= {f'space-{value}' for value in tokens['spacing_px']}
+    names |= {f'radius-{key}' for key in tokens['radius_px']}
+    names |= {f'motion-{key}' for key in tokens['motion']['duration_ms']}
+    names |= {'motion-stagger', 'motion-ease', 'font-family'}
+    names |= {f'motion-distance-{key}' for key in tokens['motion']['translate_px']}
+    names |= {f'motion-scale-{key}' for key in tokens['motion']['scale']}
+    names |= {f'font-{key.replace("_", "-")}' for key in tokens['font'] if key.endswith('_family')}
+    return names
+
+
+def check_stylesheets(tokens: dict | None = None) -> list[str]:
+    """Shared and app stylesheets must consume tokens, not declare values.
+
+    The only allowed literal colours are inside the token-derived file itself.
+    A hex literal or rgb()/hsl() call in a hand-written sheet means a second
+    palette has appeared, so it fails here instead of drifting silently.
+    """
+    errors: list[str] = []
+    allowed = defined_variables(tokens) if tokens is not None else set()
+    sheets = [CLASSICAL_PATH, *APP_STYLES]
+    for sheet in sheets:
+        if not sheet.exists():
+            continue
+        text = sheet.read_text(encoding='utf-8')
+        for number, line in enumerate(text.splitlines(), start=1):
+            stripped = line.strip()
+            if stripped.startswith('/*') or stripped.startswith('*'):
+                continue
+            found = HEX.findall(line) or RAW_COLOR.findall(line)
+            if found:
+                errors.append(
+                    f'{sheet.resolve().relative_to(ROOT)}:{number} 使用了直接颜色值 {found[0]}，请改用 --xj- Token'
+                )
+            if tokens is not None:
+                for name in re.findall(r'var\(--xj-([a-z0-9-]+)\)', line):
+                    if name not in allowed:
+                        errors.append(
+                            f'{sheet.resolve().relative_to(ROOT)}:{number} 引用了未定义的 --xj-{name}（会在浏览器里静默失效）'
+                        )
+    return errors
+
+
 def validate(tokens: dict) -> tuple[list[str], list[dict]]:
     errors: list[str] = []
     results: list[dict] = []
     colors = tokens['colors']
-    for role in {'paper', 'surface', 'ink', 'muted', 'sea', 'sea-deep', 'sea-soft', 'foam', 'accent', 'accent-soft', 'accent-ink', 'ornament', 'border', 'control-border', 'error', 'error-soft', 'success', 'success-soft', 'warning', 'warning-soft'}:
+    for role in {'paper', 'surface', 'ink', 'muted', 'sea', 'sea-deep', 'sea-soft', 'foam', 'accent', 'accent-soft', 'accent-ink', 'ornament', 'border', 'control-border', 'error', 'error-soft', 'success', 'success-soft', 'warning', 'warning-soft', 'ink-void', 'paper-warm', 'seal', 'seal-soft', 'gilded', 'mist'}:
         if role not in colors:
             errors.append(f'missing color role: {role}')
     for name, value in colors.items():
@@ -119,6 +186,7 @@ def main() -> int:
     try:
         tokens = json.loads(TOKEN_PATH.read_text(encoding='utf-8'))
         errors, pairs = validate(tokens)
+        errors.extend(check_stylesheets(tokens))
         if not errors:
             css = render_css(tokens)
             if args.write:
@@ -127,7 +195,7 @@ def main() -> int:
                 errors.append('generated CSS differs; run python scripts/check_ui.py --write')
     except (OSError, ValueError, KeyError, TypeError) as exc:
         errors, pairs = [f'invalid token file: {exc}'], []
-    print(json.dumps({'check': 'ui_token_baseline', 'status': 'failed' if errors else 'passed', 'contrast_pairs': pairs, 'errors': errors, 'scope': 'token/CSS/declared-pair checks; production React, real page contrast, motion and browser acceptance not implied'}, ensure_ascii=False, indent=2))
+    print(json.dumps({'check': 'ui_token_baseline', 'status': 'failed' if errors else 'passed', 'contrast_pairs': pairs, 'errors': errors, 'scope': 'token/CSS/declared-pair/no-literal-colour checks; production React, real page contrast, motion and browser acceptance not implied'}, ensure_ascii=False, indent=2))
     return 1 if errors else 0
 
 

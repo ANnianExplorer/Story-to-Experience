@@ -86,7 +86,12 @@ export class PlayerClient {
     }
     if (!response.ok) {
       const error = (payload as { error?: { code: string; message: string } } | null)?.error;
-      throw new PlayerError(response.status, error?.code ?? 'UNKNOWN', error?.message ?? '请求失败。');
+      if (error?.code) throw new PlayerError(response.status, error.code, error.message);
+      throw new PlayerError(
+        response.status,
+        `HTTP_${response.status}`,
+        response.status === 404 ? '体验不存在或链接已失效。' : `服务返回 ${response.status}。`,
+      );
     }
     return (payload as { data?: T })?.data as T;
   }

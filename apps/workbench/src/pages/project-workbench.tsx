@@ -30,6 +30,14 @@ export function ProjectPage({ scope, projectId }: { scope: WorkbenchScope; proje
       dispatch({ type: 'project_created', project });
       const claims = await client.listClaims(projectId);
       if (claims.length > 0) dispatch({ type: 'claims_updated', claims });
+      // Restore the material state too: without it a reload looked like nothing
+      // had been uploaded, even though the server still had the document.
+      const sources = await client.listSources(projectId);
+      const ready = sources.find((source) => source.parse_status === 'ready');
+      if (ready) {
+        const spans = await client.listSpans(ready.source_id);
+        dispatch({ type: 'material_parsed', sourceId: ready.source_id, spans });
+      }
       const versions = await client.listVersions(projectId);
       if (versions.length > 0) {
         const head = versions[0];

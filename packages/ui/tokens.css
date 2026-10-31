@@ -20,7 +20,16 @@
   --xj-color-success-soft: #E5EEE4;
   --xj-color-warning: #795516;
   --xj-color-warning-soft: #F6EBCF;
+  --xj-color-ink-void: #14191A;
+  --xj-color-paper-warm: #F7F3E8;
+  --xj-color-seal: #A63A2B;
+  --xj-color-seal-soft: #F4E3DC;
+  --xj-color-gilded: #B08A4A;
+  --xj-color-mist: #E7EDE9;
   --xj-font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --xj-font-display-family: "Songti SC", "Noto Serif CJK SC", "Source Han Serif SC", "STSong", "SimSun", serif;
+  --xj-font-kai-family: "Kaiti SC", "KaiTi", "STKaiti", "Noto Serif CJK SC", serif;
+  --xj-font-label-family: "SF Mono", "JetBrains Mono", ui-monospace, "Cascadia Mono", monospace;
   --xj-font-label: 12px;
   --xj-font-meta: 14px;
   --xj-font-body: 16px;
@@ -31,6 +40,11 @@
   --xj-font-hero-editorial: 64px;
   --xj-font-hero-editorial-tablet: 44px;
   --xj-font-hero-editorial-mobile: 36px;
+  --xj-font-display: 88px;
+  --xj-font-display-tablet: 64px;
+  --xj-font-display-mobile: 44px;
+  --xj-font-section: 44px;
+  --xj-font-section-mobile: 32px;
   --xj-weight-regular: 400;
   --xj-weight-medium: 500;
   --xj-weight-semibold: 600;

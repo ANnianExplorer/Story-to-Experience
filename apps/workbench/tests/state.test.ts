@@ -91,6 +91,52 @@ test('a failed run is not reported as a candidate', () => {
   assert.equal(gates(state).canGenerate, true);
 });
 
+test('gate reasons name the step that is actually missing', () => {
+  // A reloaded project has claims and a generated version but no in-memory
+  // upload/snapshot. The hint must point at the missing step rather than
+  // claiming nothing was ever uploaded.
+  const reloaded = stateWith({
+    project: {
+      id: 'p1',
+      name: '项目',
+      brief: { audience: '五年级', duration_minutes: 6, learning_goals: ['观察'] },
+      brief_revision: 1,
+      revision_head_id: 'v1',
+      latest_candidate_version_id: 'v1',
+      selected_version_id: 'v1',
+      stable_version_id: null,
+      active_revision_run_id: null,
+      created_at: null,
+    },
+    claims: [{ id: 'c1', revision: 1, statement: '事实', content_type: 'supported', evidence_span_ids: ['s1'] }],
+    versions: [{ id: 'v1', parent_id: null, spec_hash: 'a'.repeat(64), semantic_hash: 'b'.repeat(64), created_at: '' }],
+    selectedVersionId: 'v1',
+  });
+  const gate = gates(reloaded);
+  assert.equal(gate.canGenerate, false);
+  assert.ok(
+    gate.reasons.some((reason) => reason.includes('冻结')),
+    `expected a freeze hint, got ${JSON.stringify(gate.reasons)}`,
+  );
+  assert.ok(!gate.reasons.includes('尚未上传资料'), 'claims prove material exists');
+
+  // Missing claims is reported first, because it blocks the freeze step.
+  const noClaims = stateWith({ sourceId: 'src' });
+  assert.deepEqual(gates(noClaims).reasons, ['还没有标为事实的证据片段']);
+});
+
+test('snapshot state is recoverable from the server on reload', () => {
+  const restored = reduce(initialState, { type: 'snapshot_restored', snapshotId: 'snap' });
+  assert.equal(restored.stage, 'snapshot_ready');
+  assert.equal(restored.snapshotId, 'snap');
+  const gate = gates({
+    ...restored,
+    sourceId: 'src',
+    claims: [{ id: 'c1', revision: 1, statement: '事实', content_type: 'supported', evidence_span_ids: ['s1'] }],
+  });
+  assert.equal(gate.canGenerate, true);
+});
+
 test('budget display never rounds an unknown state into success', () => {
   assert.equal(formatCost(undefined), '—');
   assert.equal(formatCost({ max_calls: 12, calls_reserved: 0, calls_settled: 7, repair_rounds: 1 }), '7/12 次调用 · 修复 1/2 轮');
